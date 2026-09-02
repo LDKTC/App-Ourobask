@@ -30,7 +30,6 @@ jobs:
         with:
           channel: stable
           flutter-version: 3.47.2
-          cache: true
 
       - name: Resolve release tag
         id: meta
