@@ -4,10 +4,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// เซ็น release ด้วย key ของผู้ใช้ถ้ามี android/key.properties
 val keystoreProperties = java.util.Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+val hasReleaseKeystore: Boolean = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    val keystoreStream = java.io.FileInputStream(keystorePropertiesFile)
+    keystoreProperties.load(keystoreStream)
+    keystoreStream.close()
 }
 
 android {
@@ -23,7 +27,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.ourobask.ourobask"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -38,12 +41,15 @@ android {
     }
 
     signingConfigs {
-        if (!keystoreProperties.isEmpty) {
+        if (hasReleaseKeystore) {
             create("release") {
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
-                storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
                 storePassword = keystoreProperties.getProperty("storePassword")
+                val storePath: String? = keystoreProperties.getProperty("storeFile")
+                if (storePath != null) {
+                    storeFile = rootProject.file(storePath)
+                }
             }
         }
     }
@@ -52,10 +58,10 @@ android {
         release {
             // ใช้ key จาก android/key.properties ถ้ามี ไม่เช่นนั้นเซ็นด้วย debug key
             // เพื่อให้ APK ที่ build จาก CI ติดตั้งได้ทันที
-            signingConfig = if (keystoreProperties.isEmpty) {
-                signingConfigs.getByName("debug")
-            } else {
+            signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
             isMinifyEnabled = false
             isShrinkResources = false

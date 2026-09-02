@@ -178,7 +178,7 @@ class NotificationService {
 
     final NotificationDetails details = await _detailsFor(reminder);
     for (final int weekday in routine.days) {
-      final DateTime next = _nextOccurrence(
+      final DateTime next = _nextFireTime(
         weekday,
         routine.startMinutes,
         reminder.offsetMinutes,
@@ -199,22 +199,28 @@ class NotificationService {
   static String _hhmm(int minutes) =>
       '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
 
-  DateTime _nextOccurrence(int weekday, int startMinutes, int offsetMinutes) {
+  /// เวลาที่จะเตือนครั้งถัดไป — หาวันที่กิจวัตรเกิดขึ้นก่อน แล้วค่อยหักเวลาล่วงหน้า
+  /// (ถ้าหักก่อนจะได้วันในสัปดาห์ผิดเมื่อเตือนล่วงหน้าเกิน 1 วัน)
+  DateTime _nextFireTime(int weekday, int startMinutes, int offsetMinutes) {
     final DateTime now = DateTime.now();
-    DateTime candidate = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      startMinutes ~/ 60,
-      startMinutes % 60,
-    ).subtract(Duration(minutes: offsetMinutes));
-    // เดินไปข้างหน้าจนกว่าจะตรงวันที่ต้องการและอยู่ในอนาคต
-    int guard = 0;
-    while ((candidate.weekday != weekday || !candidate.isAfter(now)) && guard < 14) {
-      candidate = candidate.add(const Duration(days: 1));
-      guard++;
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    for (int i = 0; i <= 14; i++) {
+      final DateTime day = today.add(Duration(days: i));
+      if (day.weekday != weekday) continue;
+      final DateTime start = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        startMinutes ~/ 60,
+        startMinutes % 60,
+      );
+      final DateTime fire = start.subtract(Duration(minutes: offsetMinutes));
+      if (fire.isAfter(now)) return fire;
     }
-    return candidate;
+    // เผื่อกรณีสุดขอบ: ใช้รอบของสัปดาห์ถัดไป
+    return today
+        .add(Duration(days: (weekday - today.weekday + 7) % 7 + 7))
+        .add(Duration(minutes: startMinutes - offsetMinutes));
   }
 
   Future<void> cancelReminder(Reminder reminder) async {

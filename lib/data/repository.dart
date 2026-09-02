@@ -122,6 +122,16 @@ class Repository {
     final Map<String, Object?> map = reminder.toMap()..remove('id');
     final int id = await db.insert('reminders', map);
     reminder.id = id;
+    // ใช้ id ของแถวเป็น notification id เพื่อรับประกันว่าไม่ซ้ำกับการเตือนอื่น
+    if (reminder.notificationId != id) {
+      reminder.notificationId = id;
+      await db.update(
+        'reminders',
+        <String, Object?>{'notification_id': id},
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+      );
+    }
     return id;
   }
 
@@ -334,11 +344,6 @@ class Repository {
       if (owner == null) continue;
       reminder.id = null;
       reminder.ownerId = owner;
-      reminder.notificationId = Reminder(
-        ownerType: reminder.ownerType,
-        ownerId: owner,
-        offsetMinutes: reminder.offsetMinutes,
-      ).notificationId;
       await insertReminder(reminder);
     }
   }
