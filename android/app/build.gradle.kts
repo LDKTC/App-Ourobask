@@ -1,3 +1,8 @@
+// ต้อง import ไว้ เพราะใน Kotlin DSL ตัว `java` ถูกใช้เป็น extension ของ Project
+// จึงบังชื่อแพ็กเกจ java.* ทำให้เขียน java.util.Properties() ตรง ๆ ไม่ได้
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -5,11 +10,11 @@ plugins {
 }
 
 // เซ็น release ด้วย key ของผู้ใช้ถ้ามี android/key.properties
-val keystoreProperties = java.util.Properties()
+val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKeystore: Boolean = keystorePropertiesFile.exists()
 if (hasReleaseKeystore) {
-    val keystoreStream = java.io.FileInputStream(keystorePropertiesFile)
+    val keystoreStream = FileInputStream(keystorePropertiesFile)
     keystoreProperties.load(keystoreStream)
     keystoreStream.close()
 }
