@@ -1,0 +1,380 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../data/models.dart';
+import '../services/notification_service.dart';
+import '../state/app_state.dart';
+import '../utils/formatters.dart';
+import 'widgets/common.dart';
+import 'widgets/reminder_editor.dart';
+
+/// หน้าสร้าง/แก้ไขกิจวัตร (ทำซ้ำทุกสัปดาห์ เช่น ตารางเรียน)
+class RoutineEditorPage extends StatefulWidget {
+  const RoutineEditorPage({super.key, this.routine, this.initialProjectId});
+
+  final Routine? routine;
+  final int? initialProjectId;
+
+  @override
+  State<RoutineEditorPage> createState() => _RoutineEditorPageState();
+}
+
+class _RoutineEditorPageState extends State<RoutineEditorPage> {
+  late final TextEditingController _title = TextEditingController(
+    text: widget.routine?.title ?? '',
+  );
+  late final TextEditingController _notes = TextEditingController(
+    text: widget.routine?.notes ?? '',
+  );
+
+  late Set<int> _days = <int>{...?widget.routine?.days};
+  late int _start = widget.routine?.startMinutes ?? 8 * 60;
+  late int _end = widget.routine?.endMinutes ?? 9 * 60;
+  late int _color = widget.routine?.color ?? kPalette[2];
+  late bool _active = widget.routine?.active ?? true;
+  late int? _projectId = widget.routine?.projectId ?? widget.initialProjectId;
+  late DateTime? _startDate = widget.routine?.startDate;
+  late DateTime? _endDate = widget.routine?.endDate;
+  List<Reminder> _reminders = <Reminder>[];
+
+  bool get _isNew => widget.routine?.id == null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.routine?.id != null) {
+      _reminders = context
+          .read<AppState>()
+          .remindersOf(ReminderOwner.routine, widget.routine!.id)
+          .map((Reminder r) => r.copy())
+          .toList();
+    }
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickTime({required bool isStart}) async {
+    final int current = isStart ? _start : _end;
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+      helpText: isStart ? 'เวลาเริ่ม' : 'เวลาสิ้นสุด',
+    );
+    if (picked == null) return;
+    setState(() {
+      final int minutes = picked.hour * 60 + picked.minute;
+      if (isStart) {
+        _start = minutes;
+        if (_end <= _start) _end = (_start + 60).clamp(0, 24 * 60 - 1);
+      } else {
+        _end = minutes;
+        if (_end <= _start) _start = (_end - 60).clamp(0, 24 * 60 - 1);
+      }
+    });
+  }
+
+  Future<void> _pickRangeDate({required bool isStart}) async {
+    final DateTime now = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: (isStart ? _startDate : _endDate) ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 10),
+      helpText: isStart ? 'เริ่มใช้ตั้งแต่' : 'ใช้ถึงวันที่',
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isStart) {
+        _startDate = picked;
+      } else {
+        _endDate = picked;
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    final String title = _title.text.trim();
+    if (title.isEmpty) {
+      showSnack(context, 'ใส่ชื่อกิจวัตรก่อนบันทึก');
+      return;
+    }
+    if (_days.isEmpty) {
+      showSnack(context, 'เลือกอย่างน้อย 1 วัน');
+      return;
+    }
+    final AppState state = context.read<AppState>();
+    final Routine routine = widget.routine ?? Routine(title: title);
+    routine
+      ..title = title
+      ..notes = _notes.text.trim()
+      ..projectId = _projectId
+      ..days = (_days.toList()..sort())
+      ..startMinutes = _start
+      ..endMinutes = _end
+      ..color = _color
+      ..active = _active
+      ..startDate = _startDate
+      ..endDate = _endDate;
+
+    await state.saveRoutine(routine, reminders: _reminders);
+    if (_reminders.any((Reminder r) => r.enabled)) {
+      await NotificationService.instance.requestPermissions();
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _delete() async {
+    final Routine? routine = widget.routine;
+    if (routine == null) return;
+    final bool ok = await confirmDialog(
+      context,
+      title: 'ลบกิจวัตรนี้?',
+      message: '"${routine.title}" จะถูกลบพร้อมการเตือนทั้งหมด',
+      confirmLabel: 'ลบ',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    await context.read<AppState>().deleteRoutine(routine);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final AppState state = context.watch<AppState>();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isNew ? 'กิจวัตรใหม่' : 'แก้ไขกิจวัตร'),
+        actions: <Widget>[
+          if (!_isNew)
+            IconButton(
+              tooltip: 'ลบ',
+              onPressed: _delete,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.icon(
+              onPressed: _save,
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('บันทึก'),
+            ),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+        children: <Widget>[
+          TextField(
+            controller: _title,
+            autofocus: _isNew,
+            style: theme.textTheme.titleLarge,
+            decoration: const InputDecoration(
+              hintText: 'เช่น เรียนวิชาคณิตศาสตร์',
+              prefixIcon: Icon(Icons.repeat_rounded),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _notes,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(hintText: 'รายละเอียด เช่น ห้อง/อาจารย์'),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'วันที่ทำซ้ำ',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: List<Widget>.generate(7, (int index) {
+                      final int weekday = index + 1;
+                      final bool selected = _days.contains(weekday);
+                      return FilterChip(
+                        label: Text(Fmt.weekdayShort(weekday)),
+                        selected: selected,
+                        onSelected: (bool value) => setState(() {
+                          if (value) {
+                            _days.add(weekday);
+                          } else {
+                            _days.remove(weekday);
+                          }
+                        }),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => setState(() => _days = <int>{1, 2, 3, 4, 5}),
+                          icon: const Icon(Icons.work_outline_rounded, size: 16),
+                          label: const Text('จ - ศ'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              setState(() => _days = <int>{1, 2, 3, 4, 5, 6, 7}),
+                          icon: const Icon(Icons.calendar_month_rounded, size: 16),
+                          label: const Text('ทุกวัน'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: Column(
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.play_arrow_rounded),
+                  title: const Text('เวลาเริ่ม'),
+                  trailing: Text(
+                    '${Fmt.minutesAsTime(_start)} น.',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  onTap: () => _pickTime(isStart: true),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.stop_rounded),
+                  title: const Text('เวลาสิ้นสุด'),
+                  trailing: Text(
+                    '${Fmt.minutesAsTime(_end)} น.',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  onTap: () => _pickTime(isStart: false),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  DropdownButtonFormField<int?>(
+                    initialValue: _projectId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'อยู่ในโฟลเดอร์งาน',
+                      prefixIcon: Icon(Icons.folder_rounded),
+                    ),
+                    items: <DropdownMenuItem<int?>>[
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('ไม่อยู่ในโฟลเดอร์'),
+                      ),
+                      ...state.projects.map(
+                        (Project project) => DropdownMenuItem<int?>(
+                          value: project.id,
+                          child: Text(project.name, overflow: TextOverflow.ellipsis),
+                        ),
+                      ),
+                    ],
+                    onChanged: (int? value) => setState(() => _projectId = value),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'สี',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ColorChoiceRow(
+                    value: _color,
+                    onChanged: (int value) => setState(() => _color = value),
+                  ),
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _active,
+                    title: const Text('ใช้งานกิจวัตรนี้'),
+                    subtitle: const Text('ปิดชั่วคราวได้โดยไม่ต้องลบ'),
+                    onChanged: (bool value) => setState(() => _active = value),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.date_range_rounded),
+                    title: const Text('ช่วงที่ใช้ (ไม่บังคับ)'),
+                    subtitle: Text(
+                      '${_startDate == null ? 'ตั้งแต่วันนี้' : 'ตั้งแต่ ${Fmt.date(_startDate!)}'}'
+                      ' • ${_endDate == null ? 'ไม่มีวันสิ้นสุด' : 'ถึง ${Fmt.date(_endDate!)}'}',
+                    ),
+                  ),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickRangeDate(isStart: true),
+                          child: const Text('เลือกวันเริ่ม'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickRangeDate(isStart: false),
+                          child: const Text('เลือกวันสิ้นสุด'),
+                        ),
+                      ),
+                      if (_startDate != null || _endDate != null)
+                        IconButton(
+                          tooltip: 'ล้างช่วงวันที่',
+                          onPressed: () => setState(() {
+                            _startDate = null;
+                            _endDate = null;
+                          }),
+                          icon: const Icon(Icons.clear_rounded),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+              child: ReminderListSection(
+                reminders: _reminders,
+                ownerTitle: _title.text,
+                onChanged: (List<Reminder> value) => setState(() => _reminders = value),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

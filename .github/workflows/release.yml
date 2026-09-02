@@ -1,0 +1,94 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'แท็กของรีลีส เช่น v1.0.0'
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release APK and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build universal release APK
+        run: flutter build apk --release
+
+      - name: Build per-ABI release APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: Collect artifacts
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/ourobask-${TAG}.apk"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            src="build/app/outputs/flutter-apk/app-${abi}-release.apk"
+            [ -f "$src" ] && cp "$src" "dist/ourobask-${TAG}-${abi}.apk"
+          done
+          ls -lh dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Ourobask ${{ steps.meta.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/*.apk
+          body: |
+            ## Ourobask ${{ steps.meta.outputs.tag }}
+
+            แอปเก็บ Task / Work / Idea พร้อมระบบเตือนและปลุก (Flutter + SQLite)
+
+            ### ไฟล์ที่แนบมา
+            - `ourobask-${{ steps.meta.outputs.tag }}.apk` — ไฟล์รวมทุกสถาปัตยกรรม (แนะนำ)
+            - `ourobask-${{ steps.meta.outputs.tag }}-arm64-v8a.apk` — เครื่อง Android 64-bit ส่วนใหญ่ (ไฟล์เล็กกว่า)
+            - `ourobask-${{ steps.meta.outputs.tag }}-armeabi-v7a.apk` — เครื่อง 32-bit รุ่นเก่า
+            - `ourobask-${{ steps.meta.outputs.tag }}-x86_64.apk` — อีมูเลเตอร์
+
+            ### การติดตั้ง
+            ดาวน์โหลดไฟล์ `.apk` แล้วเปิดบนเครื่อง Android (ต้องอนุญาต "ติดตั้งจากแหล่งที่ไม่รู้จัก")
+
+            > APK นี้เซ็นด้วย debug keystore ของ Flutter เพื่อให้ติดตั้งทดสอบได้ทันที
+            > หากต้องการนำขึ้น Play Store ให้ใส่ `android/key.properties` แล้ว build ใหม่
