@@ -133,8 +133,11 @@ flutter build apk --release              # ไฟล์รวมทุกสถ�
 flutter build apk --release --split-per-abi
 ```
 
-โดยค่าเริ่มต้น release build จะเซ็นด้วย debug keystore เพื่อให้ติดตั้งทดสอบได้ทันที
-หากต้องการเซ็นด้วย key ของตัวเอง ให้สร้าง `android/key.properties`
+โดยค่าเริ่มต้น release build จะเซ็นด้วย debug keystore ที่ commit ไว้ใน `android/app/debug.keystore`
+(key เดียวกันทุกเครื่อง/ทุก CI run) เพื่อให้ APK แต่ละเวอร์ชัน **อัปเดตทับกันเองในแอปได้**
+โดยไม่เจอ "แพ็กเกจขัดแย้งกัน" (ถ้าปล่อยให้ Gradle สุ่ม debug key เองแบบเดิม แต่ละรีลีสจะเซ็นด้วยคนละ key
+ทำให้ Android ปฏิเสธการอัปเดตทับ ต้องลบแอปเก่าก่อนถึงจะติดตั้งใหม่ได้)
+หากต้องการเซ็นด้วย key ของตัวเอง (เช่นจะขึ้น Play Store) ให้สร้าง `android/key.properties`
 
 ```properties
 storePassword=...

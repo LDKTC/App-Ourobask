@@ -57,6 +57,18 @@ android {
                 }
             }
         }
+
+        // เดิมปล่อยให้ AGP สร้าง debug key แบบสุ่มให้เองที่ ~/.android/debug.keystore
+        // ทำให้แต่ละเครื่อง/แต่ละ CI run เซ็น APK ด้วยคนละ key — Android จึงมองว่าเป็นแอปคนละตัว
+        // เวลาผู้ใช้กด "อัปเดตในแอป" ทับเวอร์ชันก่อนหน้าเลยเจอ INSTALL_FAILED_UPDATE_INCOMPATIBLE
+        // ("แพ็กเกจขัดแย้งกัน") เพราะลายเซ็นไม่ตรงกับที่ติดตั้งอยู่
+        // แก้โดย commit debug key ไว้ในโปรเจกต์ (app/debug.keystore) ให้ทุก build ใช้ key เดียวกันเสมอ
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
