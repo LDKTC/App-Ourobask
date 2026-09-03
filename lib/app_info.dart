@@ -7,8 +7,8 @@ class AppInfo {
   /// ต้องตรงกับ `version` ใน pubspec.yaml (มีเทสต์คอยตรวจให้)
   ///
   /// ใช้เป็นค่าสำรองเมื่ออ่านเวอร์ชันจากระบบปฏิบัติการไม่ได้
-  static const String version = '1.1.0';
-  static const int buildNumber = 2;
+  static const String version = '1.2.0';
+  static const int buildNumber = 3;
 
   static const String repoOwner = 'LDKTC';
   static const String repoName = 'App-Ourobask';
