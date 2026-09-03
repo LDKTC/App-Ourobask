@@ -8,6 +8,7 @@ import '../utils/formatters.dart';
 import 'routine_editor_page.dart';
 import 'task_editor_page.dart';
 import 'widgets/common.dart';
+import 'widgets/quest_widgets.dart';
 import 'widgets/task_tile.dart';
 import 'work_page.dart';
 
@@ -44,6 +45,7 @@ class ProjectDetailPage extends StatelessWidget {
     final List<Routine> routines = state.routines
         .where((Routine r) => r.projectId == projectId)
         .toList();
+    final MoneySummary money = state.moneyOf(tasks);
 
     return Scaffold(
       appBar: AppBar(
@@ -55,6 +57,19 @@ class ProjectDetailPage extends StatelessWidget {
           ],
         ),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'เพิ่มเควสเก็บเงิน',
+            icon: const Icon(Icons.savings_rounded),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => TaskEditorPage(
+                  initialProjectId: projectId,
+                  initialKind: TaskKind.quest,
+                ),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'แก้ไขโฟลเดอร์',
             icon: const Icon(Icons.edit_rounded),
@@ -85,6 +100,11 @@ class ProjectDetailPage extends StatelessWidget {
                 child: Text(project.description, style: theme.textTheme.bodyMedium),
               ),
             ),
+          // ยอดเงินรวมของเควสทั้งโฟลเดอร์ พร้อมแถบความคืบหน้า
+          if (!money.isEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            MoneySummaryCard(summary: money, color: color),
+          ],
           if (tasks.isEmpty && routines.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 60),

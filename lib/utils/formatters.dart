@@ -120,6 +120,53 @@ class Fmt {
 
   static String timeOfDay(TimeOfDay t) => '${two(t.hour)}:${two(t.minute)}';
 
+  /// ตัวเลขแบบมีตัวคั่นหลักพัน เช่น 1,250
+  static String grouped(int value) {
+    final String digits = value.abs().toString();
+    final StringBuffer buffer = StringBuffer(value < 0 ? '-' : '');
+    for (int i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+
+  /// จำนวนเงิน เช่น ฿1,250 หรือ ฿1,250.50 (ตัดทศนิยมทิ้งถ้าลงตัว)
+  static String money(double amount, {bool symbol = true}) {
+    final bool negative = amount < 0;
+    final double rounded = (amount.abs() * 100).round() / 100;
+    int whole = rounded.floor();
+    int satang = ((rounded - whole) * 100).round();
+    if (satang >= 100) {
+      whole += 1;
+      satang = 0;
+    }
+    final String digits = grouped(whole);
+    final String text = satang == 0 ? digits : '$digits.${two(satang)}';
+    return '${negative ? '-' : ''}${symbol ? '฿' : ''}$text';
+  }
+
+  /// ขนาดไฟล์แบบอ่านง่าย เช่น 24.6 MB
+  static String fileSize(int bytes) {
+    if (bytes <= 0) return '-';
+    const List<String> units = <String>['B', 'KB', 'MB', 'GB'];
+    double value = bytes.toDouble();
+    int unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return '${value.toStringAsFixed(unit == 0 ? 0 : 1)} ${units[unit]}';
+  }
+
+  /// วันที่ของเดือนที่กิจวัตรทำซ้ำ เช่น "ทุกวันที่ 1, 25"
+  static String monthDaysLabel(List<int> days) {
+    if (days.isEmpty) return 'ยังไม่เลือกวันที่';
+    final List<int> sorted = List<int>.from(days)..sort();
+    if (sorted.length > 6) return 'เดือนละ ${sorted.length} ครั้ง';
+    return 'ทุกวันที่ ${sorted.join(', ')}';
+  }
+
   static String daysLabel(List<int> days) {
     if (days.isEmpty) return 'ยังไม่เลือกวัน';
     if (days.length == 7) return 'ทุกวัน';

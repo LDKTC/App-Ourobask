@@ -6,6 +6,7 @@ import 'calendar/calendar_page.dart';
 import 'home_page.dart';
 import 'idea_box_page.dart';
 import 'routines_page.dart';
+import 'update_page.dart';
 import 'work_page.dart';
 
 /// โครงหลักของแอป — สลับหน้าแบบเก็บสถานะไว้ทั้ง 5 หน้า
@@ -18,6 +19,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+  bool _updateChecked = false;
 
   static const List<Widget> _pages = <Widget>[
     HomePage(),
@@ -32,6 +34,13 @@ class _RootShellState extends State<RootShell> {
     final AppState state = context.watch<AppState>();
     if (state.isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    // ตรวจหาเวอร์ชันใหม่ครั้งเดียวหลังข้อมูล (รวมถึงค่าตั้งค่า) โหลดเสร็จ
+    if (!_updateChecked) {
+      _updateChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) maybeAutoCheckForUpdate(context);
+      });
     }
     return Scaffold(
       body: IndexedStack(index: _index, children: _pages),

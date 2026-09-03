@@ -38,6 +38,12 @@ int? _msOf(DateTime? d) => d?.millisecondsSinceEpoch;
 DateTime? _dateOf(Object? v) =>
     v == null ? null : DateTime.fromMillisecondsSinceEpoch(v as int);
 bool _boolOf(Object? v) => (v as int? ?? 0) == 1;
+double? _amountOf(Object? v) => (v as num?)?.toDouble();
+List<int> _intsOf(Object? v) => (v as String? ?? '')
+    .split(',')
+    .where((String s) => s.trim().isNotEmpty)
+    .map(int.parse)
+    .toList();
 
 /// โฟลเดอร์งาน (Work Project) ที่ครอบ Task อีกชั้นหนึ่ง
 class Project {
@@ -88,6 +94,24 @@ class Project {
   Project copy() => Project.fromMap(toMap());
 }
 
+/// ประเภทของงาน
+///
+/// * [TaskKind.normal] — งานทั่วไป ทำเสร็จแล้วติ๊กถูก
+/// * [TaskKind.quest] — เควสเก็บเงิน ต้องระบุยอดเป้าหมาย แล้วทยอยหยอดเงินเข้าไป
+enum TaskKind { normal, quest }
+
+extension TaskKindDb on TaskKind {
+  String get dbValue => this == TaskKind.quest ? 'quest' : 'normal';
+
+  String get label => this == TaskKind.quest ? 'เควสเก็บเงิน' : 'งานทั่วไป';
+
+  IconData get icon =>
+      this == TaskKind.quest ? Icons.savings_rounded : Icons.check_circle_outline_rounded;
+}
+
+TaskKind taskKindFromDb(Object? value) =>
+    (value as String?) == 'quest' ? TaskKind.quest : TaskKind.normal;
+
 /// งานหนึ่งชิ้น (คล้ายโน้ต) — ระบุวัน/เวลาหรือไม่ก็ได้
 ///
 /// * [due] == null  → ไม่มีกำหนด
@@ -99,6 +123,8 @@ class Task {
     this.projectId,
     required this.title,
     this.notes = '',
+    this.kind = TaskKind.normal,
+    this.targetAmount,
     this.due,
     this.hasTime = false,
     this.durationMinutes,
@@ -116,6 +142,10 @@ class Task {
   int? projectId;
   String title;
   String notes;
+  TaskKind kind;
+
+  /// ยอดเงินเป้าหมายของเควส (ใช้เฉพาะ [TaskKind.quest])
+  double? targetAmount;
   DateTime? due;
   bool hasTime;
   int? durationMinutes;
@@ -128,6 +158,11 @@ class Task {
   DateTime updatedAt;
 
   bool get isAllDay => due != null && !hasTime;
+
+  bool get isQuest => kind == TaskKind.quest;
+
+  /// ยอดเป้าหมายที่ใช้คำนวณจริง (0 = ยังไม่ได้ตั้งเป้า)
+  double get goalAmount => targetAmount ?? 0;
 
   /// เวลาที่ใช้เตือนจริง ๆ — งานทั้งวันถือว่าครบกำหนด 09:00 ของวันนั้น
   DateTime? get effectiveDue {
@@ -147,6 +182,8 @@ class Task {
     'project_id': projectId,
     'title': title,
     'notes': notes,
+    'kind': kind.dbValue,
+    'target_amount': targetAmount,
     'due_at': _msOf(due),
     'has_time': hasTime ? 1 : 0,
     'duration_minutes': durationMinutes,
@@ -164,6 +201,8 @@ class Task {
     projectId: m['project_id'] as int?,
     title: m['title'] as String? ?? '',
     notes: m['notes'] as String? ?? '',
+    kind: taskKindFromDb(m['kind']),
+    targetAmount: _amountOf(m['target_amount']),
     due: _dateOf(m['due_at']),
     hasTime: _boolOf(m['has_time']),
     durationMinutes: m['duration_minutes'] as int?,
@@ -273,6 +312,71 @@ const List<int> kReminderPresets = <int>[
   20160, // 2 สัปดาห์
 ];
 
+/// เงินที่หยอดเข้าเควสหนึ่งครั้ง
+class QuestEntry {
+  QuestEntry({
+    this.id,
+    required this.taskId,
+    required this.amount,
+    this.note = '',
+    this.routineId,
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  int? id;
+  int taskId;
+
+  /// บวก = หยอดเงินเข้า, ลบ = ถอนออก
+  double amount;
+  String note;
+
+  /// ถ้าบันทึกมาจากแผนกิจวัตร จะอ้างอิงกิจวัตรนั้นไว้
+  int? routineId;
+  DateTime createdAt;
+
+  Map<String, Object?> toMap() => <String, Object?>{
+    'id': id,
+    'task_id': taskId,
+    'amount': amount,
+    'note': note,
+    'routine_id': routineId,
+    'created_at': createdAt.millisecondsSinceEpoch,
+  };
+
+  static QuestEntry fromMap(Map<String, Object?> m) => QuestEntry(
+    id: m['id'] as int?,
+    taskId: m['task_id'] as int? ?? 0,
+    amount: _amountOf(m['amount']) ?? 0,
+    note: m['note'] as String? ?? '',
+    routineId: m['routine_id'] as int?,
+    createdAt: _dateOf(m['created_at']) ?? DateTime.now(),
+  );
+
+  QuestEntry copy() => QuestEntry.fromMap(toMap());
+}
+
+/// รูปแบบการทำซ้ำของกิจวัตร
+///
+/// * [RoutineRepeat.weekly]  — ซ้ำตามวันในสัปดาห์ (จ-อา)
+/// * [RoutineRepeat.monthly] — ซ้ำตามวันที่ของเดือน (เช่น ทุกวันที่ 1 และ 25)
+enum RoutineRepeat { weekly, monthly }
+
+extension RoutineRepeatDb on RoutineRepeat {
+  String get dbValue => this == RoutineRepeat.monthly ? 'monthly' : 'weekly';
+
+  String get label => this == RoutineRepeat.monthly ? 'ทุกเดือน' : 'ทุกสัปดาห์';
+}
+
+RoutineRepeat routineRepeatFromDb(Object? value) =>
+    (value as String?) == 'monthly' ? RoutineRepeat.monthly : RoutineRepeat.weekly;
+
+/// วันที่ของเดือนที่เลือกไว้ ปรับให้ไม่เกินจำนวนวันจริงของเดือนนั้น
+/// (เช่น เลือกวันที่ 31 เดือนกุมภาพันธ์จะกลายเป็นวันสุดท้ายของเดือน)
+int clampMonthDay(int day, int year, int month) {
+  final int last = DateTime(year, month + 1, 0).day;
+  return day < 1 ? 1 : (day > last ? last : day);
+}
+
 /// กิจวัตรที่ทำซ้ำ ๆ เช่น ตารางเรียน (วัน + ช่วงเวลาเริ่ม-จบ)
 class Routine {
   Routine({
@@ -281,6 +385,10 @@ class Routine {
     this.notes = '',
     this.projectId,
     List<int>? days,
+    this.repeat = RoutineRepeat.weekly,
+    List<int>? monthDays,
+    this.questTaskId,
+    this.questAmount,
     this.startMinutes = 8 * 60,
     this.endMinutes = 9 * 60,
     this.color = 0xFF2A9D8F,
@@ -289,6 +397,7 @@ class Routine {
     this.endDate,
     DateTime? createdAt,
   }) : days = days ?? <int>[],
+       monthDays = monthDays ?? <int>[],
        createdAt = createdAt ?? DateTime.now();
 
   int? id;
@@ -296,8 +405,19 @@ class Routine {
   String notes;
   int? projectId;
 
-  /// 1 = จันทร์ ... 7 = อาทิตย์ (ตรงกับ DateTime.weekday)
+  /// 1 = จันทร์ ... 7 = อาทิตย์ (ตรงกับ DateTime.weekday) — ใช้กับ [RoutineRepeat.weekly]
   List<int> days;
+
+  RoutineRepeat repeat;
+
+  /// วันที่ของเดือน 1-31 — ใช้กับ [RoutineRepeat.monthly]
+  List<int> monthDays;
+
+  /// เควสเก็บเงินที่กิจวัตรนี้เป็นแผนหยอดเงินให้
+  int? questTaskId;
+
+  /// ยอดเงินที่ตั้งใจหยอดในแต่ละรอบของแผน
+  double? questAmount;
   int startMinutes;
   int endMinutes;
   int color;
@@ -306,9 +426,25 @@ class Routine {
   DateTime? endDate;
   DateTime createdAt;
 
+  bool get isQuestPlan => questTaskId != null;
+
+  bool get isMonthly => repeat == RoutineRepeat.monthly;
+
+  /// วันที่ในรอบนี้ถูกเลือกไว้หรือไม่ (ยังไม่รวมช่วงวันที่เริ่ม/สิ้นสุด)
+  bool matchesCycle(DateTime day) {
+    if (isMonthly) {
+      if (monthDays.isEmpty) return false;
+      return monthDays.any(
+        (int wanted) => clampMonthDay(wanted, day.year, day.month) == day.day,
+      );
+    }
+    return days.contains(day.weekday);
+  }
+
   bool occursOn(DateTime day) {
-    if (!active || !days.contains(day.weekday)) return false;
+    if (!active) return false;
     final DateTime d = DateTime(day.year, day.month, day.day);
+    if (!matchesCycle(d)) return false;
     final DateTime? s = startDate;
     final DateTime? e = endDate;
     if (s != null && d.isBefore(DateTime(s.year, s.month, s.day))) return false;
@@ -328,6 +464,10 @@ class Routine {
     'notes': notes,
     'project_id': projectId,
     'days': days.join(','),
+    'repeat_mode': repeat.dbValue,
+    'month_days': monthDays.join(','),
+    'quest_task_id': questTaskId,
+    'quest_amount': questAmount,
     'start_minutes': startMinutes,
     'end_minutes': endMinutes,
     'color': color,
@@ -342,11 +482,11 @@ class Routine {
     title: m['title'] as String? ?? '',
     notes: m['notes'] as String? ?? '',
     projectId: m['project_id'] as int?,
-    days: (m['days'] as String? ?? '')
-        .split(',')
-        .where((String s) => s.trim().isNotEmpty)
-        .map(int.parse)
-        .toList(),
+    days: _intsOf(m['days']),
+    repeat: routineRepeatFromDb(m['repeat_mode']),
+    monthDays: _intsOf(m['month_days']),
+    questTaskId: m['quest_task_id'] as int?,
+    questAmount: _amountOf(m['quest_amount']),
     startMinutes: m['start_minutes'] as int? ?? 8 * 60,
     endMinutes: m['end_minutes'] as int? ?? 9 * 60,
     color: m['color'] as int? ?? 0xFF2A9D8F,

@@ -31,6 +31,8 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result -> handle(call, result) }
+        // ระบบตรวจสอบรีลีสและติดตั้งอัปเดตในแอป
+        InstallerChannel(applicationContext).attach(flutterEngine.dartExecutor.binaryMessenger)
     }
 
     private fun handle(call: MethodCall, result: MethodChannel.Result) {

@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../../utils/formatters.dart';
 import 'common.dart';
+import 'quest_widgets.dart';
 
 /// การ์ดงานหนึ่งชิ้น ใช้ซ้ำทั้งหน้าแรก หน้าโปรเจกต์ และแผ่นรายวัน
 class TaskTile extends StatelessWidget {
@@ -117,11 +118,18 @@ class TaskTile extends StatelessWidget {
                             label: Fmt.relative(task.due!, hasTime: task.hasTime),
                             color: overdue ? theme.colorScheme.error : null,
                           ),
+                        if (task.isQuest) QuestBadge(color: accent),
                         if (project != null) ProjectChip(project: project, compact: true),
                         if (task.notes.trim().isNotEmpty)
                           const _Meta(icon: Icons.notes_rounded, label: 'มีบันทึก'),
                       ],
                     ),
+                    // เควสเก็บเงินมีแถบความคืบหน้าของยอดเงินอยู่ในรายการเลย
+                    if (task.isQuest)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, right: 4),
+                        child: QuestProgressLine(task: task, compact: dense),
+                      ),
                   ],
                 ),
               ),
@@ -130,6 +138,13 @@ class TaskTile extends StatelessWidget {
                   hasAlarm ? Icons.alarm_on_rounded : Icons.notifications_active_rounded,
                   size: 18,
                   color: accent,
+                ),
+              if (task.isQuest && !task.done)
+                IconButton(
+                  tooltip: 'หยอดเงินเข้าเควส',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.add_card_rounded, size: 20, color: accent),
+                  onPressed: () => showQuestDepositSheet(context, task),
                 ),
             ],
           ),
@@ -182,6 +197,8 @@ class RoutineTile extends StatelessWidget {
     final AppState state = context.watch<AppState>();
     final Color accent = Color(routine.color);
     final Project? project = state.projectById(routine.projectId);
+    final Task? quest = state.taskById(routine.questTaskId);
+    final double planAmount = routine.questAmount ?? 0;
 
     return Card(
       color: theme.colorScheme.surfaceContainerLow,
@@ -198,7 +215,14 @@ class RoutineTile extends StatelessWidget {
                   color: accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.repeat_rounded, color: accent),
+                child: Icon(
+                  routine.isQuestPlan
+                      ? Icons.savings_rounded
+                      : (routine.isMonthly
+                            ? Icons.event_repeat_rounded
+                            : Icons.repeat_rounded),
+                  color: accent,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -220,20 +244,46 @@ class RoutineTile extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: <Widget>[
                         _Meta(
-                          icon: Icons.calendar_view_week_rounded,
-                          label: Fmt.daysLabel(routine.days),
+                          icon: routine.isMonthly
+                              ? Icons.event_repeat_rounded
+                              : Icons.calendar_view_week_rounded,
+                          label: routine.isMonthly
+                              ? Fmt.monthDaysLabel(routine.monthDays)
+                              : Fmt.daysLabel(routine.days),
                         ),
                         _Meta(
                           icon: Icons.schedule_rounded,
                           label:
                               '${Fmt.minutesAsTime(routine.startMinutes)} - ${Fmt.minutesAsTime(routine.endMinutes)}',
                         ),
+                        // แผนเก็บเงินของเควส — บอกยอดต่อรอบและเควสปลายทาง
+                        if (quest != null)
+                          _Meta(
+                            icon: Icons.savings_rounded,
+                            label: planAmount > 0
+                                ? '${Fmt.money(planAmount)} → ${quest.title}'
+                                : 'แผนของ ${quest.title}',
+                            color: accent,
+                          ),
                         if (project != null) ProjectChip(project: project, compact: true),
                       ],
                     ),
                   ],
                 ),
               ),
+              if (quest != null && !quest.done)
+                IconButton(
+                  tooltip: 'บันทึกเงินตามแผนนี้',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.add_card_rounded, size: 20, color: accent),
+                  onPressed: () => showQuestDepositSheet(
+                    context,
+                    quest,
+                    suggested: planAmount > 0 ? planAmount : null,
+                    routineId: routine.id,
+                    note: routine.title,
+                  ),
+                ),
               if (showToggle)
                 Switch(
                   value: routine.active,

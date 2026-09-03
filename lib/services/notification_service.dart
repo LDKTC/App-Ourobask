@@ -7,6 +7,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/models.dart';
+import '../utils/formatters.dart';
 
 /// จัดการการแจ้งเตือนและเสียงปลุกทั้งหมดของแอป
 class NotificationService {
@@ -135,8 +136,15 @@ class NotificationService {
     return NotificationDetails(android: android, iOS: darwin);
   }
 
-  int _routineNotificationId(Reminder reminder, int weekday) =>
-      reminder.notificationId * 10 + weekday;
+  /// การเตือนของกิจวัตรถูกแตกเป็นหลาย notification (วันละหนึ่ง) จึงต้องมี id ของตัวเอง
+  /// slot = วันในสัปดาห์ (1-7) หรือวันที่ของเดือน (1-31)
+  ///
+  /// บวก [_routineIdBase] ไว้เพื่อไม่ให้ชนกับ id ของการเตือนงาน (ซึ่งใช้เลขแถวตรง ๆ)
+  int _routineNotificationId(Reminder reminder, int slot) =>
+      _routineIdBase + (reminder.notificationId % _routineIdBase) * 100 + slot;
+
+  static const int _routineIdBase = 1000000;
+  static const int _maxRoutineSlot = 31;
 
   /// ตั้งการเตือนของงานหนึ่งชิ้น
   Future<void> scheduleTaskReminder(Task task, Reminder reminder) async {
@@ -169,31 +177,45 @@ class NotificationService {
     return '${reminder.label} • กำหนด ${due.day}/${due.month}/${due.year} $time';
   }
 
-  /// ตั้งการเตือนของกิจวัตร (ซ้ำทุกสัปดาห์ตามวันที่เลือก)
+  /// ตั้งการเตือนของกิจวัตร — ซ้ำทุกสัปดาห์ตามวันที่เลือก
+  /// หรือซ้ำทุกเดือนตามวันที่ของเดือน (ใช้กับแผนเก็บเงินของเควส)
   Future<void> scheduleRoutineReminder(Routine routine, Reminder reminder) async {
     if (!isSupported) return;
     await init();
     await cancelReminder(reminder);
-    if (!reminder.enabled || !routine.active || routine.days.isEmpty) return;
+    if (!reminder.enabled || !routine.active) return;
+    final List<int> slots = routine.isMonthly ? routine.monthDays : routine.days;
+    if (slots.isEmpty) return;
 
     final NotificationDetails details = await _detailsFor(reminder);
-    for (final int weekday in routine.days) {
-      final DateTime next = _nextFireTime(
-        weekday,
-        routine.startMinutes,
-        reminder.offsetMinutes,
-      );
+    final String body = _bodyForRoutine(routine, reminder);
+    for (final int slot in slots) {
+      if (slot < 1 || slot > _maxRoutineSlot) continue;
+      final DateTime next = routine.isMonthly
+          ? _nextMonthlyFireTime(slot, routine.startMinutes, reminder.offsetMinutes)
+          : _nextFireTime(slot, routine.startMinutes, reminder.offsetMinutes);
       await _plugin.zonedSchedule(
-        _routineNotificationId(reminder, weekday),
+        _routineNotificationId(reminder, slot),
         routine.title.isEmpty ? 'กิจวัตร' : routine.title,
-        '${reminder.label} • ${_hhmm(routine.startMinutes)} - ${_hhmm(routine.endMinutes)}',
+        body,
         tz.TZDateTime.from(next, tz.local),
         details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        matchDateTimeComponents: routine.isMonthly
+            ? DateTimeComponents.dayOfMonthAndTime
+            : DateTimeComponents.dayOfWeekAndTime,
         payload: 'routine:${routine.id}',
       );
     }
+  }
+
+  String _bodyForRoutine(Routine routine, Reminder reminder) {
+    final double? amount = routine.questAmount;
+    final String time = '${_hhmm(routine.startMinutes)} - ${_hhmm(routine.endMinutes)}';
+    if (routine.isQuestPlan && amount != null && amount > 0) {
+      return '${reminder.label} • ถึงรอบเก็บเงิน ${Fmt.money(amount)}';
+    }
+    return '${reminder.label} • $time';
   }
 
   static String _hhmm(int minutes) =>
@@ -223,11 +245,32 @@ class NotificationService {
         .add(Duration(minutes: startMinutes - offsetMinutes));
   }
 
+  /// เวลาที่จะเตือนครั้งถัดไปของกิจวัตรรายเดือน
+  /// วันที่ที่เกินจำนวนวันของเดือนนั้นจะถูกเลื่อนมาเป็นวันสุดท้ายของเดือน
+  DateTime _nextMonthlyFireTime(int monthDay, int startMinutes, int offsetMinutes) {
+    final DateTime now = DateTime.now();
+    DateTime candidate = now;
+    for (int i = 0; i <= 13; i++) {
+      final DateTime month = DateTime(now.year, now.month + i);
+      final int day = clampMonthDay(monthDay, month.year, month.month);
+      final DateTime start = DateTime(
+        month.year,
+        month.month,
+        day,
+        startMinutes ~/ 60,
+        startMinutes % 60,
+      );
+      candidate = start.subtract(Duration(minutes: offsetMinutes));
+      if (candidate.isAfter(now)) return candidate;
+    }
+    return candidate;
+  }
+
   Future<void> cancelReminder(Reminder reminder) async {
     if (!isSupported) return;
     await _plugin.cancel(reminder.notificationId);
-    for (int weekday = 1; weekday <= 7; weekday++) {
-      await _plugin.cancel(_routineNotificationId(reminder, weekday));
+    for (int slot = 1; slot <= _maxRoutineSlot; slot++) {
+      await _plugin.cancel(_routineNotificationId(reminder, slot));
     }
   }
 

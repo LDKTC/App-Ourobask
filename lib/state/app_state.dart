@@ -25,6 +25,40 @@ class ReminderView {
   final int color;
 }
 
+/// ยอดเงินรวมของกลุ่มเควส (ใช้กับโฟลเดอร์งานและภาพรวมทั้งแอป)
+class MoneySummary {
+  const MoneySummary({
+    this.saved = 0,
+    this.target = 0,
+    this.questCount = 0,
+    this.reachedCount = 0,
+  });
+
+  /// เงินที่เก็บได้แล้ว
+  final double saved;
+
+  /// เป้าหมายรวมของทุกเควสในกลุ่ม
+  final double target;
+  final int questCount;
+
+  /// จำนวนเควสที่เก็บครบเป้าแล้ว
+  final int reachedCount;
+
+  bool get isEmpty => questCount == 0;
+
+  double get remaining {
+    final double left = target - saved;
+    return left > 0 ? left : 0;
+  }
+
+  /// 0.0 - 1.0 (ยังไม่ตั้งเป้า = 0)
+  double get progress {
+    if (target <= 0) return 0;
+    final double value = saved / target;
+    return value.clamp(0.0, 1.0);
+  }
+}
+
 /// สถานะกลางของแอปทั้งหมด (โหลดจาก SQLite เก็บไว้ในหน่วยความจำ)
 class AppState extends ChangeNotifier {
   AppState({Repository? repository, NotificationService? notifications})
@@ -42,12 +76,16 @@ class AppState extends ChangeNotifier {
   static const String keyDefaultSoundUri = 'default_sound_uri';
   static const String keyDefaultSoundName = 'default_sound_name';
   static const String keyShowCompleted = 'show_completed';
+  static const String keyUpdateAutoCheck = 'update_auto_check';
+  static const String keyUpdateLastCheck = 'update_last_check';
+  static const String keyUpdateSkippedVersion = 'update_skipped_version';
 
   List<Project> _projects = <Project>[];
   List<Task> _tasks = <Task>[];
   List<Reminder> _reminders = <Reminder>[];
   List<Routine> _routines = <Routine>[];
   List<Idea> _ideas = <Idea>[];
+  List<QuestEntry> _questEntries = <QuestEntry>[];
   Map<String, String> _settings = <String, String>{};
   bool _loading = true;
 
@@ -56,6 +94,7 @@ class AppState extends ChangeNotifier {
   List<Routine> get routines => List<Routine>.unmodifiable(_routines);
   List<Idea> get ideas => List<Idea>.unmodifiable(_ideas.where((Idea i) => !i.archived));
   List<Reminder> get reminders => List<Reminder>.unmodifiable(_reminders);
+  List<QuestEntry> get questEntries => List<QuestEntry>.unmodifiable(_questEntries);
   bool get isLoading => _loading;
 
   ThemeMode get themeMode {
@@ -70,6 +109,17 @@ class AppState extends ChangeNotifier {
   }
 
   bool get buddhistYear => (_settings[keyBuddhistYear] ?? '1') == '1';
+
+  /// ตรวจหาเวอร์ชันใหม่ให้อัตโนมัติตอนเปิดแอป
+  bool get updateAutoCheck => (_settings[keyUpdateAutoCheck] ?? '1') == '1';
+
+  DateTime? get updateLastCheck {
+    final int? ms = int.tryParse(_settings[keyUpdateLastCheck] ?? '');
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  /// เวอร์ชันที่ผู้ใช้กด "ข้ามไปก่อน" ไว้
+  String? get updateSkippedVersion => _settings[keyUpdateSkippedVersion];
   bool get showCompleted => (_settings[keyShowCompleted] ?? '0') == '1';
   String? get defaultSoundUri => _settings[keyDefaultSoundUri];
   String? get defaultSoundName => _settings[keyDefaultSoundName];
@@ -83,6 +133,7 @@ class AppState extends ChangeNotifier {
     _reminders = await _repo.reminders();
     _routines = await _repo.routines();
     _ideas = await _repo.ideas();
+    _questEntries = await _repo.questEntries();
     _loading = false;
     notifyListeners();
     await _notifications.rescheduleAll(
@@ -98,6 +149,7 @@ class AppState extends ChangeNotifier {
     _reminders = await _repo.reminders();
     _routines = await _repo.routines();
     _ideas = await _repo.ideas();
+    _questEntries = await _repo.questEntries();
     notifyListeners();
   }
 
@@ -124,6 +176,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> setShowCompleted(bool value) =>
       setSetting(keyShowCompleted, value ? '1' : '0');
+
+  Future<void> setUpdateAutoCheck(bool value) =>
+      setSetting(keyUpdateAutoCheck, value ? '1' : '0');
+
+  Future<void> markUpdateChecked() =>
+      setSetting(keyUpdateLastCheck, DateTime.now().millisecondsSinceEpoch.toString());
+
+  Future<void> skipUpdateVersion(String? tag) => setSetting(keyUpdateSkippedVersion, tag);
 
   Future<void> setDefaultSound(String? uri, String? name) async {
     await _repo.setSetting(keyDefaultSoundUri, uri);
@@ -223,6 +283,137 @@ class AppState extends ChangeNotifier {
     await _repo.updateTask(task);
     _tasks = await _repo.tasks();
     notifyListeners();
+  }
+
+  // ----------------------------------------------------------------- quests
+  /// เควสเก็บเงินทั้งหมด (Task ประเภท [TaskKind.quest])
+  List<Task> get quests => _tasks.where((Task t) => t.isQuest).toList();
+
+  List<QuestEntry> questEntriesOf(int? taskId) {
+    if (taskId == null) return <QuestEntry>[];
+    return _questEntries.where((QuestEntry e) => e.taskId == taskId).toList()
+      ..sort((QuestEntry a, QuestEntry b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  /// เงินที่หยอดเข้าเควสนี้แล้วทั้งหมด
+  double savedOf(Task task) {
+    final int? id = task.id;
+    if (id == null) return 0;
+    double total = 0;
+    for (final QuestEntry entry in _questEntries) {
+      if (entry.taskId == id) total += entry.amount;
+    }
+    return total;
+  }
+
+  /// ความคืบหน้าของเควส 0.0 - 1.0
+  double progressOf(Task task) {
+    if (task.goalAmount <= 0) return 0;
+    return (savedOf(task) / task.goalAmount).clamp(0.0, 1.0);
+  }
+
+  double remainingOf(Task task) {
+    final double left = task.goalAmount - savedOf(task);
+    return left > 0 ? left : 0;
+  }
+
+  bool reachedGoal(Task task) => task.goalAmount > 0 && savedOf(task) >= task.goalAmount;
+
+  /// ยอดเงินรวมของเควสในชุดที่ให้มา
+  MoneySummary moneyOf(Iterable<Task> tasks) {
+    double saved = 0;
+    double target = 0;
+    int count = 0;
+    int reached = 0;
+    for (final Task task in tasks) {
+      if (!task.isQuest) continue;
+      count++;
+      final double current = savedOf(task);
+      saved += current;
+      target += task.goalAmount;
+      if (task.goalAmount > 0 && current >= task.goalAmount) reached++;
+    }
+    return MoneySummary(
+      saved: saved,
+      target: target,
+      questCount: count,
+      reachedCount: reached,
+    );
+  }
+
+  /// ยอดเงินรวมของเควสในโฟลเดอร์งานหนึ่ง (null = งานที่ไม่อยู่ในโฟลเดอร์)
+  MoneySummary moneyOfProject(int? projectId) =>
+      moneyOf(_tasks.where((Task t) => t.projectId == projectId));
+
+  MoneySummary get moneyOverall => moneyOf(_tasks);
+
+  /// แผนเก็บเงินประจำ (กิจวัตร) ที่ผูกกับเควสนี้
+  List<Routine> questPlansOf(int? taskId) {
+    if (taskId == null) return <Routine>[];
+    return _routines.where((Routine r) => r.questTaskId == taskId).toList();
+  }
+
+  /// เงินที่แผนทั้งหมดของเควสนี้จะหยอดให้ต่อเดือนโดยประมาณ
+  double monthlyPlanAmount(int? taskId) {
+    double total = 0;
+    for (final Routine routine in questPlansOf(taskId)) {
+      if (!routine.active) continue;
+      final double amount = routine.questAmount ?? 0;
+      if (amount <= 0) continue;
+      total += routine.isMonthly
+          ? amount * routine.monthDays.length
+          // สัปดาห์หนึ่งมี 52 รอบต่อปี จึงเฉลี่ยเป็นเดือนได้ประมาณนี้
+          : amount * routine.days.length * 52 / 12;
+    }
+    return total;
+  }
+
+  /// จำนวนเดือนโดยประมาณที่จะเก็บครบเป้าตามแผน (null = ยังไม่มีแผนที่คำนวณได้)
+  int? monthsToGoal(Task task) {
+    final double perMonth = monthlyPlanAmount(task.id);
+    if (perMonth <= 0 || task.goalAmount <= 0) return null;
+    final double left = remainingOf(task);
+    if (left <= 0) return 0;
+    return (left / perMonth).ceil();
+  }
+
+  /// หยอดเงินเข้าเควส (จำนวนติดลบ = ถอนออก)
+  Future<void> addQuestEntry(
+    Task task, {
+    required double amount,
+    String note = '',
+    int? routineId,
+  }) async {
+    final int? id = task.id;
+    if (id == null || amount == 0) return;
+    await _repo.insertQuestEntry(
+      QuestEntry(taskId: id, amount: amount, note: note, routineId: routineId),
+    );
+    _questEntries = await _repo.questEntries();
+    await _syncQuestCompletion(id);
+    notifyListeners();
+  }
+
+  Future<void> deleteQuestEntry(QuestEntry entry) async {
+    final int? id = entry.id;
+    if (id == null) return;
+    await _repo.deleteQuestEntry(id);
+    _questEntries = await _repo.questEntries();
+    await _syncQuestCompletion(entry.taskId);
+    notifyListeners();
+  }
+
+  /// เควสที่เก็บครบเป้าแล้วให้ถือว่าเสร็จเอง (และย้อนกลับได้ถ้าลบเงินออก)
+  Future<void> _syncQuestCompletion(int taskId) async {
+    final Task? task = taskById(taskId);
+    if (task == null || !task.isQuest || task.goalAmount <= 0) return;
+    final bool reached = savedOf(task) >= task.goalAmount;
+    if (reached == task.done) return;
+    task.done = reached;
+    task.completedAt = reached ? DateTime.now() : null;
+    await _repo.updateTask(task);
+    _tasks = await _repo.tasks();
+    await _rescheduleOwner(ReminderOwner.task, taskId);
   }
 
   // --------------------------------------------------------------- routines
@@ -433,9 +624,12 @@ class AppState extends ChangeNotifier {
   }
 
   DateTime? _nextRoutineFire(Routine routine, int offsetMinutes) {
-    if (routine.days.isEmpty) return null;
+    final bool monthly = routine.isMonthly;
+    if ((monthly ? routine.monthDays : routine.days).isEmpty) return null;
     final DateTime now = DateTime.now();
-    for (int i = 0; i <= 14; i++) {
+    // กิจวัตรรายเดือนอาจเว้นห่างเกินสองสัปดาห์ จึงต้องมองไปข้างหน้าไกลกว่า
+    final int horizon = monthly ? 62 : 14;
+    for (int i = 0; i <= horizon; i++) {
       final DateTime day = startOfDay(now).add(Duration(days: i));
       if (!routine.occursOn(day)) continue;
       final DateTime fire = routine
@@ -534,6 +728,7 @@ class AppState extends ChangeNotifier {
         reminders: payload.reminders,
         routines: payload.routines,
         ideas: payload.ideas,
+        questEntries: payload.questEntries,
       );
     } else {
       await _repo.mergeAll(
@@ -542,6 +737,7 @@ class AppState extends ChangeNotifier {
         reminders: payload.reminders,
         routines: payload.routines,
         ideas: payload.ideas,
+        questEntries: payload.questEntries,
       );
     }
     await _reloadAll();
