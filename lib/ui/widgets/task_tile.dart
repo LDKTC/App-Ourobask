@@ -133,12 +133,27 @@ class TaskTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (hasReminder)
+              // สวิตช์เปิด/ปิดการเตือนของงานนี้ได้จากรายการเลย ไม่ต้องเข้าไปในงาน
+              if (reminders.isNotEmpty) ...<Widget>[
                 Icon(
-                  hasAlarm ? Icons.alarm_on_rounded : Icons.notifications_active_rounded,
+                  hasReminder
+                      ? (hasAlarm
+                            ? Icons.alarm_on_rounded
+                            : Icons.notifications_active_rounded)
+                      : Icons.notifications_off_rounded,
                   size: 18,
-                  color: accent,
+                  color: hasReminder ? accent : theme.colorScheme.outline,
                 ),
+                Transform.scale(
+                  scale: 0.8,
+                  child: Switch(
+                    value: hasReminder,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: (bool value) =>
+                        state.setTaskRemindersEnabled(task, value),
+                  ),
+                ),
+              ],
               if (task.isQuest && !task.done)
                 IconButton(
                   tooltip: 'หยอดเงินเข้าเควส',

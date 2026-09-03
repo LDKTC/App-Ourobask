@@ -163,6 +163,9 @@ class _ReminderSheet extends StatefulWidget {
   State<_ReminderSheet> createState() => _ReminderSheetState();
 }
 
+/// ค่าพิเศษของ dropdown ที่หมายถึง "กำหนดเวลาเตือนเอง"
+const int _customOffsetValue = -1;
+
 class _ReminderSheetState extends State<_ReminderSheet> {
   late int _offset = widget.initial?.offsetMinutes ?? 60;
   late bool _isAlarm = widget.initial?.isAlarm ?? false;
@@ -199,6 +202,14 @@ class _ReminderSheetState extends State<_ReminderSheet> {
     final bool ok = await SoundService.instance.preview(uri);
     if (!mounted) return;
     if (!ok) showSnack(context, 'เล่นเสียงนี้ไม่ได้บนเครื่องนี้');
+  }
+
+  /// ตัวเลือกใน dropdown — ค่าสำเร็จรูป บวกค่าที่กำหนดเองไว้แล้ว (ถ้ามี)
+  List<int> get _offsetOptions {
+    final List<int> options = List<int>.from(kReminderPresets);
+    if (!options.contains(_offset)) options.add(_offset);
+    options.sort();
+    return options;
   }
 
   Future<void> _customOffset() async {
@@ -254,29 +265,42 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  ...kReminderPresets.map(
-                    (int minutes) => ChoiceChip(
-                      label: Text(Reminder.offsetLabel(minutes)),
-                      selected: _offset == minutes,
-                      onSelected: (_) => setState(() => _offset = minutes),
-                    ),
+              // เลือกเวลาเตือนแบบ dropdown (เลือกจากรายการ / กำหนดเองเป็นนาที)
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'เตือนล่วงหน้า',
+                  prefixIcon: Icon(Icons.schedule_rounded),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _offset,
+                    isExpanded: true,
+                    borderRadius: BorderRadius.circular(14),
+                    items: <DropdownMenuItem<int>>[
+                      ..._offsetOptions.map(
+                        (int minutes) => DropdownMenuItem<int>(
+                          value: minutes,
+                          child: Text(Reminder.offsetLabel(minutes)),
+                        ),
+                      ),
+                      const DropdownMenuItem<int>(
+                        value: _customOffsetValue,
+                        child: Text('กำหนดเอง (ระบุนาที)...'),
+                      ),
+                    ],
+                    onChanged: (int? value) {
+                      if (value == null) return;
+                      if (value == _customOffsetValue) {
+                        _customOffset();
+                        return;
+                      }
+                      setState(() => _offset = value);
+                    },
                   ),
-                  ActionChip(
-                    avatar: const Icon(Icons.tune_rounded, size: 16),
-                    label: Text(
-                      kReminderPresets.contains(_offset)
-                          ? 'กำหนดเอง'
-                          : Reminder.offsetLabel(_offset),
-                    ),
-                    onPressed: _customOffset,
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _isAlarm,

@@ -8,6 +8,7 @@ import '../utils/formatters.dart';
 import 'routine_editor_page.dart';
 import 'settings_page.dart';
 import 'task_editor_page.dart';
+import 'task_history_page.dart';
 import 'widgets/common.dart';
 import 'widgets/quest_widgets.dart';
 import 'widgets/reminder_editor.dart';
@@ -89,6 +90,14 @@ class _HomePageState extends State<HomePage> {
                   : Icons.visibility_off_rounded,
             ),
             onPressed: () => state.setShowCompleted(!state.showCompleted),
+          ),
+          IconButton(
+            tooltip: 'ประวัติงานที่เสร็จแล้ว',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const TaskHistoryPage()),
+            ),
           ),
           IconButton(
             tooltip: 'ตั้งค่า',

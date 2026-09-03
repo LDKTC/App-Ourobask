@@ -4,10 +4,9 @@ import '../../utils/date_time_utils.dart';
 import '../../utils/formatters.dart';
 import '../task_editor_page.dart';
 import 'month_view.dart';
+import 'period_picker.dart';
 import 'week_view.dart';
 import 'year_view.dart';
-
-enum CalendarMode { week, month, year }
 
 /// หน้าปฏิทิน — เลือกดูเป็นสัปดาห์ / เดือน / ปี
 class CalendarPage extends StatefulWidget {
@@ -32,6 +31,17 @@ class _CalendarPageState extends State<CalendarPage> {
           _anchor = DateTime(_anchor.year + direction, _anchor.month, 1);
       }
     });
+  }
+
+  /// เปิดรายการช่วงเวลาเพื่อกระโดดข้ามไปยังสัปดาห์/เดือน/ปีที่ต้องการ
+  Future<void> _openPeriodJump() async {
+    final DateTime? picked = await showPeriodJumpSheet(
+      context,
+      mode: _mode,
+      anchor: _anchor,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _anchor = picked);
   }
 
   String get _titleText {
@@ -95,12 +105,36 @@ class _CalendarPageState extends State<CalendarPage> {
                       icon: const Icon(Icons.chevron_left_rounded),
                       onPressed: () => _shift(-1),
                     ),
+                    // แตะที่ช่วงเวลาเพื่อเปิดรายการสำหรับกระโดดข้ามช่วง
                     Expanded(
                       child: Center(
-                        child: Text(
-                          _titleText,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+                        child: Tooltip(
+                          message: 'เลือกช่วงเวลา',
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _openPeriodJump,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Flexible(
+                                    child: Text(
+                                      _titleText,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  const Icon(Icons.arrow_drop_down_rounded, size: 22),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
