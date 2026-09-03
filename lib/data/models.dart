@@ -161,6 +161,10 @@ class Task {
 
   bool get isQuest => kind == TaskKind.quest;
 
+  /// เวลาที่ทำเสร็จ ใช้กับประวัติงาน
+  /// (งานเก่าที่ไม่มี [completedAt] ใช้เวลาที่แก้ไขล่าสุดแทน)
+  DateTime? get completedTime => done ? (completedAt ?? updatedAt) : null;
+
   /// ยอดเป้าหมายที่ใช้คำนวณจริง (0 = ยังไม่ได้ตั้งเป้า)
   double get goalAmount => targetAmount ?? 0;
 

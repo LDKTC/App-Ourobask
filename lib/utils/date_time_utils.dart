@@ -120,3 +120,21 @@ const List<DeadlineBucket> kHomeBucketOrder = <DeadlineBucket>[
   DeadlineBucket.beyondMonth,
   DeadlineBucket.none,
 ];
+
+/// จำนวนวันที่เก็บงานที่ทำเสร็จแล้วไว้ในประวัติ ก่อนจะถูกล้างออกอัตโนมัติ
+const int kCompletedRetentionDays = 30;
+
+/// วันเวลาที่งานซึ่งทำเสร็จตอน [completedAt] จะถูกล้างออกจากประวัติ
+DateTime completedExpiryOf(DateTime completedAt) =>
+    completedAt.add(const Duration(days: kCompletedRetentionDays));
+
+/// งานที่ทำเสร็จตอน [completedAt] เกินระยะเวลาที่เก็บไว้แล้วหรือยัง
+bool isCompletionExpired(DateTime completedAt, {DateTime? now}) =>
+    !completedExpiryOf(completedAt).isAfter(now ?? DateTime.now());
+
+/// จำนวนวันที่เหลือก่อนงานที่ทำเสร็จแล้วจะถูกล้างออก (0 = จะถูกล้างในรอบถัดไป)
+int daysLeftBeforePurge(DateTime completedAt, {DateTime? now}) {
+  final DateTime current = now ?? DateTime.now();
+  final int left = completedExpiryOf(completedAt).difference(current).inDays;
+  return left > 0 ? left : 0;
+}

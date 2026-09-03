@@ -96,11 +96,14 @@ class _IdeaBoxPageState extends State<IdeaBoxPage> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addIdea,
-        icon: const Icon(Icons.edit_note_rounded),
-        label: const Text('หย่อนไอเดีย'),
-      ),
+      // กล่องปิดอยู่จะใช้ปุ่ม "หย่อนไอเดีย" กลางจอแทน FAB
+      floatingActionButton: _open
+          ? FloatingActionButton.extended(
+              onPressed: _addIdea,
+              icon: const Icon(Icons.edit_note_rounded),
+              label: const Text('หย่อนไอเดีย'),
+            )
+          : null,
       bottomNavigationBar: _selected.isEmpty
           ? null
           : BottomAppBar(
@@ -136,16 +139,20 @@ class _IdeaBoxPageState extends State<IdeaBoxPage> {
               onEdit: (Idea idea) => showIdeaEditor(context, idea: idea),
               onClose: _toggleBox,
             )
-          : _ClosedBox(onOpen: _toggleBox),
+          : _ClosedBox(onOpen: _toggleBox, onDrop: _addIdea),
     );
   }
 }
 
 /// กล่องปิด — ตั้งใจไม่แสดงเนื้อหาหรือจำนวนไอเดียข้างใน
+///
+/// ปุ่ม "หย่อนไอเดีย" อยู่กลางจอและอยู่หน้ากล่อง ส่วนปุ่ม "เปิดกล่อง"
+/// เป็นปุ่มเล็กกว่าอยู่ใต้ปุ่มหย่อนไอเดีย
 class _ClosedBox extends StatelessWidget {
-  const _ClosedBox({required this.onOpen});
+  const _ClosedBox({required this.onOpen, required this.onDrop});
 
   final VoidCallback onOpen;
+  final VoidCallback onDrop;
 
   @override
   Widget build(BuildContext context) {
@@ -156,58 +163,53 @@ class _ClosedBox extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            GestureDetector(
-              onTap: onOpen,
-              child: Container(
-                width: 190,
-                height: 150,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: theme.colorScheme.shadow.withValues(alpha: 0.15),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
+            Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                _BoxArt(onTap: onOpen),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Container(
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(18),
+                    FilledButton.icon(
+                      onPressed: onDrop,
+                      style: FilledButton.styleFrom(
+                        elevation: 3,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 16,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: Container(
-                        width: 44,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.onPrimary.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
+                      icon: const Icon(Icons.edit_note_rounded),
+                      label: const Text('หย่อนไอเดีย'),
                     ),
-                    Expanded(
-                      child: Center(
-                        child: Icon(
-                          Icons.lock_rounded,
-                          size: 40,
-                          color: theme.colorScheme.onPrimaryContainer.withValues(
-                            alpha: 0.55,
-                          ),
+                    const SizedBox(height: 10),
+                    FilledButton.tonalIcon(
+                      onPressed: onOpen,
+                      style: FilledButton.styleFrom(
+                        elevation: 2,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                      icon: const Icon(Icons.lock_open_rounded, size: 15),
+                      label: const Text('เปิดกล่อง'),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 26),
             Text(
               'กล่องปิดอยู่',
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -220,11 +222,68 @@ class _ClosedBox extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.lock_open_rounded),
-              label: const Text('เปิดกล่อง'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// รูปกล่องที่ปิดฝาอยู่ (แตะที่กล่องก็เปิดได้เหมือนกัน)
+class _BoxArt extends StatelessWidget {
+  const _BoxArt({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 230,
+        height: 190,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: theme.colorScheme.shadow.withValues(alpha: 0.15),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          children: <Widget>[
+            Container(
+              height: 42,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              ),
+              alignment: Alignment.center,
+              child: Container(
+                width: 44,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onPrimary.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Icon(
+                    Icons.lock_rounded,
+                    size: 22,
+                    color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.45),
+                  ),
+                ),
+              ),
             ),
           ],
         ),

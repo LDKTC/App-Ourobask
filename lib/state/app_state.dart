@@ -135,6 +135,8 @@ class AppState extends ChangeNotifier {
     _ideas = await _repo.ideas();
     _questEntries = await _repo.questEntries();
     _loading = false;
+    // งานที่ทำเสร็จเกินระยะเวลาที่เก็บไว้จะถูกล้างออกทุกครั้งที่เปิดแอป
+    await _purgeExpiredCompleted(silent: true);
     notifyListeners();
     await _notifications.rescheduleAll(
       tasks: _tasks,
@@ -283,6 +285,67 @@ class AppState extends ChangeNotifier {
     await _repo.updateTask(task);
     _tasks = await _repo.tasks();
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------- ประวัติงาน
+  /// งานที่ทำเสร็จแล้วทั้งหมด เรียงจากที่เพิ่งเสร็จล่าสุดไปหาเก่าสุด
+  List<Task> completedHistory() {
+    final List<Task> list = _tasks.where((Task t) => t.done).toList()
+      ..sort((Task a, Task b) {
+        final DateTime? ta = a.completedTime;
+        final DateTime? tb = b.completedTime;
+        if (ta == null && tb == null) return (b.id ?? 0).compareTo(a.id ?? 0);
+        if (ta == null) return 1;
+        if (tb == null) return -1;
+        return tb.compareTo(ta);
+      });
+    return list;
+  }
+
+  /// เอางานกลับมาทำต่อ — ล้างสถานะเสร็จและตั้งการเตือนใหม่ให้
+  Future<void> restoreTask(Task task) => toggleTaskDone(task, false);
+
+  /// ลบงานที่เลือกไว้ในประวัติทิ้งถาวร
+  Future<void> deleteTasksPermanently(Iterable<Task> tasks) async {
+    final List<Task> targets = tasks.where((Task t) => t.id != null).toList();
+    if (targets.isEmpty) return;
+    for (final Task task in targets) {
+      await _cancelRemindersOf(ReminderOwner.task, task.id!);
+      await _repo.deleteTask(task.id!);
+    }
+    _tasks = await _repo.tasks();
+    _reminders = await _repo.reminders();
+    _questEntries = await _repo.questEntries();
+    notifyListeners();
+  }
+
+  /// ล้างประวัติงานที่ทำเสร็จแล้วทั้งหมดทันที
+  Future<int> clearCompletedHistory() async {
+    final List<Task> done = completedHistory();
+    await deleteTasksPermanently(done);
+    return done.length;
+  }
+
+  /// ล้างงานที่ทำเสร็จเกิน [kCompletedRetentionDays] วันออกจากประวัติ
+  Future<int> purgeExpiredCompletedTasks({DateTime? now}) =>
+      _purgeExpiredCompleted(now: now);
+
+  Future<int> _purgeExpiredCompleted({DateTime? now, bool silent = false}) async {
+    final List<Task> expired = _tasks.where((Task t) {
+      final DateTime? at = t.completedTime;
+      return at != null && isCompletionExpired(at, now: now);
+    }).toList();
+    if (expired.isEmpty) return 0;
+    for (final Task task in expired) {
+      if (task.id == null) continue;
+      await _cancelRemindersOf(ReminderOwner.task, task.id!);
+      await _repo.deleteTask(task.id!);
+    }
+    _tasks = await _repo.tasks();
+    _reminders = await _repo.reminders();
+    _questEntries = await _repo.questEntries();
+    if (!silent) notifyListeners();
+    return expired.length;
   }
 
   // ----------------------------------------------------------------- quests
@@ -511,6 +574,22 @@ class AppState extends ChangeNotifier {
     (Reminder r) =>
         r.ownerType == ReminderOwner.task && r.ownerId == task.id && r.enabled,
   );
+
+  /// เปิด/ปิดการเตือนทั้งหมดของงานหนึ่งชิ้นรวดเดียว (ใช้จากสวิตช์ในรายการงาน)
+  Future<void> setTaskRemindersEnabled(Task task, bool enabled) async {
+    final int? id = task.id;
+    if (id == null) return;
+    final List<Reminder> owned = remindersOf(ReminderOwner.task, id);
+    if (owned.isEmpty) return;
+    for (final Reminder reminder in owned) {
+      if (reminder.enabled == enabled) continue;
+      reminder.enabled = enabled;
+      await _repo.updateReminder(reminder);
+    }
+    _reminders = await _repo.reminders();
+    notifyListeners();
+    await _rescheduleOwner(ReminderOwner.task, id);
+  }
 
   /// เปิด/ปิดการเตือนได้อิสระโดยไม่ต้องลบทิ้ง
   Future<void> setReminderEnabled(Reminder reminder, bool enabled) async {
