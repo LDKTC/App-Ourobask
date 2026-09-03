@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# ยกเว้น debug keystore ที่ commit ไว้เพื่อให้ทุก build เซ็นด้วย key เดียวกัน (ดู app/build.gradle.kts)
+!app/debug.keystore
