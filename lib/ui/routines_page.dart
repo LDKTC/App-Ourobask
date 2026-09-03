@@ -16,6 +16,9 @@ class RoutinesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppState state = context.watch<AppState>();
     final List<Routine> routines = state.routines;
+    final List<Routine> weekly = routines.where((Routine r) => !r.isMonthly).toList();
+    final List<Routine> monthly = routines.where((Routine r) => r.isMonthly).toList()
+      ..sort((Routine a, Routine b) => _firstDay(a).compareTo(_firstDay(b)));
     final DateTime today = DateTime.now();
     final List<Routine> todays = state.routinesOn(today);
 
@@ -48,7 +51,9 @@ class RoutinesPage extends StatelessWidget {
           ? EmptyState(
               icon: Icons.repeat_rounded,
               title: 'ยังไม่มีกิจวัตร',
-              message: 'เพิ่มตารางที่ทำซ้ำ เช่น ตารางเรียน ตารางออกกำลังกาย โดยระบุวันและช่วงเวลา',
+              message:
+                  'เพิ่มตารางที่ทำซ้ำ เช่น ตารางเรียน ตารางออกกำลังกาย'
+                  ' หรือแผนเก็บเงินรายเดือนของเควส',
               action: FilledButton.icon(
                 onPressed: () => Navigator.push(
                   context,
@@ -78,18 +83,34 @@ class RoutinesPage extends StatelessWidget {
                     ),
                   ),
                 ],
+                // กิจวัตรรายเดือน เช่น แผนเก็บเงินของเควส
+                if (monthly.isNotEmpty) ...<Widget>[
+                  SectionHeader(
+                    title: 'ทำซ้ำรายเดือน',
+                    subtitle: 'ตามวันที่ของเดือน เช่น แผนเก็บเงินของเควส',
+                    icon: Icons.event_repeat_rounded,
+                    count: monthly.length,
+                  ),
+                  ...monthly.map(
+                    (Routine routine) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: RoutineTile(
+                        routine: routine,
+                        onTap: () => _open(context, routine),
+                      ),
+                    ),
+                  ),
+                ],
                 for (int weekday = 1; weekday <= 7; weekday++) ...<Widget>[
-                  if (routines
+                  if (weekly
                       .where((Routine r) => r.days.contains(weekday))
                       .isNotEmpty) ...<Widget>[
                     SectionHeader(
                       title: 'วัน${Fmt.weekdayFull(weekday)}',
                       icon: Icons.calendar_view_day_rounded,
-                      count: routines
-                          .where((Routine r) => r.days.contains(weekday))
-                          .length,
+                      count: weekly.where((Routine r) => r.days.contains(weekday)).length,
                     ),
-                    ...(routines.where((Routine r) => r.days.contains(weekday)).toList()
+                    ...(weekly.where((Routine r) => r.days.contains(weekday)).toList()
                           ..sort(
                             (Routine a, Routine b) =>
                                 a.startMinutes.compareTo(b.startMinutes),
@@ -108,6 +129,12 @@ class RoutinesPage extends StatelessWidget {
               ],
             ),
     );
+  }
+
+  /// วันที่แรกของเดือนที่กิจวัตรรายเดือนทำงาน (ใช้เรียงลำดับ)
+  static int _firstDay(Routine routine) {
+    if (routine.monthDays.isEmpty) return 99;
+    return routine.monthDays.reduce((int a, int b) => a < b ? a : b);
   }
 
   void _open(BuildContext context, Routine routine) {

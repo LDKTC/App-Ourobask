@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../data/models.dart';
 import '../state/app_state.dart';
+import '../utils/formatters.dart';
 import 'project_detail_page.dart';
 import 'task_editor_page.dart';
 import 'widgets/common.dart';
+import 'widgets/quest_widgets.dart';
 import 'widgets/task_tile.dart';
 
 /// หน้างาน — โฟลเดอร์งาน (Work Project) แบบการ์ด
@@ -19,11 +21,22 @@ class WorkPage extends StatelessWidget {
     final List<Task> loose = state.tasks
         .where((Task t) => t.projectId == null && (!t.done || state.showCompleted))
         .toList();
+    final MoneySummary money = state.moneyOverall;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('งาน'),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'เพิ่มเควสเก็บเงิน',
+            icon: const Icon(Icons.savings_rounded),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const TaskEditorPage(initialKind: TaskKind.quest),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'สร้างโฟลเดอร์ใหม่',
             icon: const Icon(Icons.create_new_folder_rounded),
@@ -42,6 +55,14 @@ class WorkPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
         children: <Widget>[
+          if (!money.isEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            MoneySummaryCard(
+              summary: money,
+              color: Theme.of(context).colorScheme.primary,
+              title: 'ยอดเงินรวมของทุกเควส',
+            ),
+          ],
           const SectionHeader(
             title: 'โฟลเดอร์งาน',
             subtitle: 'จัดกลุ่มงานเป็นโปรเจกต์',
@@ -53,7 +74,7 @@ class WorkPage extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.15,
+            childAspectRatio: 0.9,
             children: <Widget>[
               ...projects.map(
                 (Project project) => _ProjectCard(project: project, state: state),
@@ -100,6 +121,7 @@ class _ProjectCard extends StatelessWidget {
     final List<Task> tasks = state.tasksOfProject(project.id!);
     final int done = tasks.where((Task t) => t.done).length;
     final double progress = tasks.isEmpty ? 0 : done / tasks.length;
+    final MoneySummary money = state.moneyOf(tasks);
 
     return Card(
       color: color.withValues(alpha: 0.10),
@@ -152,15 +174,32 @@ class _ProjectCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 5,
-                  backgroundColor: color.withValues(alpha: 0.18),
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
+              // ยอดเงินรวมของเควสในโฟลเดอร์นี้ พร้อมแถบความคืบหน้า
+              if (!money.isEmpty) ...<Widget>[
+                Row(
+                  children: <Widget>[
+                    Icon(Icons.savings_rounded, size: 13, color: color),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        money.target > 0
+                            ? '${Fmt.money(money.saved)} / ${Fmt.money(money.target)}'
+                            : Fmt.money(money.saved),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 4),
+                MoneyProgressBar(progress: money.progress, color: color, height: 5),
+                const SizedBox(height: 8),
+              ],
+              MoneyProgressBar(progress: progress, color: color, height: 5),
             ],
           ),
         ),

@@ -9,6 +9,7 @@ import 'routine_editor_page.dart';
 import 'settings_page.dart';
 import 'task_editor_page.dart';
 import 'widgets/common.dart';
+import 'widgets/quest_widgets.dart';
 import 'widgets/reminder_editor.dart';
 import 'widgets/task_tile.dart';
 
@@ -181,6 +182,8 @@ class _SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final DateTime now = DateTime.now();
+    final MoneySummary money = state.moneyOverall;
+    final Color onContainer = theme.colorScheme.onPrimaryContainer;
     return Card(
       color: theme.colorScheme.primaryContainer,
       child: Padding(
@@ -232,6 +235,37 @@ class _SummaryCard extends StatelessWidget {
                 ),
               ],
             ),
+            // ยอดเงินรวมของเควสทั้งหมด พร้อมแถบความคืบหน้า
+            if (!money.isEmpty) ...<Widget>[
+              const SizedBox(height: 14),
+              Row(
+                children: <Widget>[
+                  Icon(Icons.savings_rounded, size: 16, color: onContainer),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      money.target > 0
+                          ? 'เก็บเงินแล้ว ${Fmt.money(money.saved)}'
+                                ' จาก ${Fmt.money(money.target)}'
+                          : 'เก็บเงินแล้ว ${Fmt.money(money.saved)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: onContainer,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${(money.progress * 100).round()}%',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: onContainer,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              MoneyProgressBar(progress: money.progress, color: onContainer, height: 6),
+            ],
           ],
         ),
       ),

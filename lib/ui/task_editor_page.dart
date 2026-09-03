@@ -5,16 +5,28 @@ import '../data/models.dart';
 import '../services/notification_service.dart';
 import '../state/app_state.dart';
 import '../utils/formatters.dart';
+import 'routine_editor_page.dart';
 import 'widgets/common.dart';
+import 'widgets/quest_widgets.dart';
 import 'widgets/reminder_editor.dart';
+import 'widgets/task_tile.dart';
 
 /// หน้าสร้าง/แก้ไขงาน — วันและเวลาเป็นทางเลือกทั้งคู่
 class TaskEditorPage extends StatefulWidget {
-  const TaskEditorPage({super.key, this.task, this.initialProjectId, this.initialDue});
+  const TaskEditorPage({
+    super.key,
+    this.task,
+    this.initialProjectId,
+    this.initialDue,
+    this.initialKind,
+  });
 
   final Task? task;
   final int? initialProjectId;
   final DateTime? initialDue;
+
+  /// ใช้เปิดหน้านี้ในโหมด "เควสเก็บเงิน" ได้ทันที
+  final TaskKind? initialKind;
 
   @override
   State<TaskEditorPage> createState() => _TaskEditorPageState();
@@ -27,7 +39,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   late final TextEditingController _notes = TextEditingController(
     text: widget.task?.notes ?? '',
   );
+  final TextEditingController _target = TextEditingController();
 
+  TaskKind _kind = TaskKind.normal;
   int? _projectId;
   DateTime? _date;
   TimeOfDay? _time;
@@ -42,6 +56,13 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   void initState() {
     super.initState();
     final Task? task = widget.task;
+    _kind = task?.kind ?? widget.initialKind ?? TaskKind.normal;
+    final double? goal = task?.targetAmount;
+    if (goal != null && goal > 0) {
+      _target.text = goal == goal.roundToDouble()
+          ? goal.round().toString()
+          : goal.toString();
+    }
     _projectId = task?.projectId ?? widget.initialProjectId;
     _priority = task?.priority ?? 0;
     _color = task?.color ?? kPalette.first;
@@ -66,6 +87,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   void dispose() {
     _title.dispose();
     _notes.dispose();
+    _target.dispose();
     super.dispose();
   }
 
@@ -145,11 +167,18 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       showSnack(context, 'ใส่ชื่องานก่อนบันทึก');
       return;
     }
+    final double? goal = parseAmount(_target.text);
+    if (_kind == TaskKind.quest && goal == null) {
+      showSnack(context, 'เควสเก็บเงินต้องระบุจำนวนเงินเป้าหมาย');
+      return;
+    }
     final AppState state = context.read<AppState>();
     final Task task = widget.task ?? Task(title: title);
     task
       ..title = title
       ..notes = _notes.text.trim()
+      ..kind = _kind
+      ..targetAmount = _kind == TaskKind.quest ? goal : null
       ..projectId = _projectId
       ..due = _due
       ..hasTime = _date != null && _time != null
@@ -179,6 +208,131 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     if (mounted) Navigator.pop(context);
   }
 
+  /// แผงของเควสเก็บเงิน — เป้าหมาย ความคืบหน้า แผนรายเดือน และประวัติการหยอดเงิน
+  Widget _questSection(BuildContext context, AppState state) {
+    final ThemeData theme = Theme.of(context);
+    final Task? task = widget.task;
+    final bool hasId = task?.id != null;
+    final Color color = Color(_color);
+    final List<QuestEntry> entries = hasId
+        ? state.questEntriesOf(task!.id)
+        : <QuestEntry>[];
+    final List<Routine> plans = hasId ? state.questPlansOf(task!.id) : <Routine>[];
+    final int? months = hasId ? state.monthsToGoal(task!) : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(Icons.savings_rounded, size: 18, color: color),
+            const SizedBox(width: 8),
+            Text(
+              'แผนเก็บเงิน',
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        MoneyField(controller: _target, label: 'เป้าหมายที่ต้องเก็บ'),
+        const SizedBox(height: 6),
+        Text(
+          'ต้องระบุจำนวนเงินเป้าหมาย แอปจะคิดเป็นแถบความคืบหน้าให้ทั้งในรายการงาน'
+          ' และยอดรวมของโฟลเดอร์',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (!hasId)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              'บันทึกเควสนี้ก่อน แล้วจะหยอดเงินและตั้งแผนเก็บเงินรายเดือนได้',
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
+          )
+        else ...<Widget>[
+          const SizedBox(height: 14),
+          QuestProgressLine(task: task!),
+          if (months != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                months == 0
+                    ? 'ตามแผนนี้เก็บครบเป้าแล้ว'
+                    : 'ตามแผนที่ตั้งไว้ จะครบเป้าในอีกประมาณ $months เดือน',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: color),
+                  onPressed: () => showQuestDepositSheet(context, task),
+                  icon: const Icon(Icons.add_card_rounded, size: 18),
+                  label: const Text('หยอดเงิน'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => RoutineEditorPage(
+                        initialQuestTaskId: task.id,
+                        initialProjectId: _projectId,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.event_repeat_rounded, size: 18),
+                  label: const Text('แผนรายเดือน'),
+                ),
+              ),
+            ],
+          ),
+          if (plans.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              'แผนเก็บเงินประจำ',
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            ...plans.map(
+              (Routine routine) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RoutineTile(
+                  routine: routine,
+                  showToggle: false,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => RoutineEditorPage(routine: routine),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Text(
+            entries.isEmpty
+                ? 'ยังไม่มีการหยอดเงิน'
+                : 'ประวัติการหยอดเงิน (${entries.length} ครั้ง)',
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          ...entries
+              .take(20)
+              .map((QuestEntry entry) => _EntryTile(entry: entry, color: color)),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -186,7 +340,11 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isNew ? 'งานใหม่' : 'แก้ไขงาน'),
+        title: Text(
+          _isNew
+              ? (_kind == TaskKind.quest ? 'เควสใหม่' : 'งานใหม่')
+              : (_kind == TaskKind.quest ? 'แก้ไขเควส' : 'แก้ไขงาน'),
+        ),
         actions: <Widget>[
           if (!_isNew)
             IconButton(
@@ -212,9 +370,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             autofocus: _isNew,
             textCapitalization: TextCapitalization.sentences,
             style: theme.textTheme.titleLarge,
-            decoration: const InputDecoration(
-              hintText: 'จะทำอะไร?',
-              prefixIcon: Icon(Icons.title_rounded),
+            decoration: InputDecoration(
+              hintText: _kind == TaskKind.quest ? 'จะเก็บเงินไปทำอะไร?' : 'จะทำอะไร?',
+              prefixIcon: const Icon(Icons.title_rounded),
             ),
           ),
           const SizedBox(height: 12),
@@ -228,6 +386,44 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             ),
           ),
           const SizedBox(height: 20),
+
+          // ------------------------------------------------------ ประเภทงาน
+          _FieldCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'ประเภทของงาน',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<TaskKind>(
+                  segments: const <ButtonSegment<TaskKind>>[
+                    ButtonSegment<TaskKind>(
+                      value: TaskKind.normal,
+                      label: Text('งานทั่วไป'),
+                      icon: Icon(Icons.check_circle_outline_rounded),
+                    ),
+                    ButtonSegment<TaskKind>(
+                      value: TaskKind.quest,
+                      label: Text('เควสเก็บเงิน'),
+                      icon: Icon(Icons.savings_rounded),
+                    ),
+                  ],
+                  selected: <TaskKind>{_kind},
+                  onSelectionChanged: (Set<TaskKind> value) =>
+                      setState(() => _kind = value.first),
+                ),
+              ],
+            ),
+          ),
+          if (_kind == TaskKind.quest) ...<Widget>[
+            const SizedBox(height: 12),
+            _FieldCard(child: _questSection(context, state)),
+          ],
+          const SizedBox(height: 12),
 
           // ---------------------------------------------------- โฟลเดอร์งาน
           _FieldCard(
@@ -415,6 +611,55 @@ class _FieldCard extends StatelessWidget {
     return Card(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Padding(padding: const EdgeInsets.fromLTRB(14, 10, 14, 14), child: child),
+    );
+  }
+}
+
+/// หนึ่งบรรทัดของประวัติการหยอด/ถอนเงินของเควส
+class _EntryTile extends StatelessWidget {
+  const _EntryTile({required this.entry, required this.color});
+
+  final QuestEntry entry;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final bool withdraw = entry.amount < 0;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      leading: Icon(
+        withdraw ? Icons.remove_circle_outline_rounded : Icons.add_circle_outline_rounded,
+        color: withdraw ? theme.colorScheme.error : color,
+      ),
+      title: Text(
+        Fmt.money(entry.amount),
+        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        entry.note.trim().isEmpty
+            ? Fmt.date(entry.createdAt)
+            : '${Fmt.date(entry.createdAt)} • ${entry.note.trim()}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: IconButton(
+        tooltip: 'ลบรายการนี้',
+        icon: const Icon(Icons.close_rounded, size: 18),
+        onPressed: () async {
+          final AppState state = context.read<AppState>();
+          final bool ok = await confirmDialog(
+            context,
+            title: 'ลบรายการเงินนี้?',
+            message: 'ยอด ${Fmt.money(entry.amount)} จะถูกหักออกจากความคืบหน้าของเควส',
+            confirmLabel: 'ลบ',
+            destructive: true,
+          );
+          if (!ok) return;
+          await state.deleteQuestEntry(entry);
+        },
+      ),
     );
   }
 }

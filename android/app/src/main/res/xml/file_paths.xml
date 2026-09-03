@@ -2,4 +2,5 @@
 <paths>
     <external-files-path name="ourobask_sounds" path="sounds/" />
     <files-path name="ourobask_internal_sounds" path="sounds/" />
+    <files-path name="ourobask_updates" path="updates/" />
 </paths>

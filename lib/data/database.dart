@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String fileName = 'ourobask.db';
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   Database? _db;
 
@@ -29,6 +29,13 @@ class AppDatabase {
           batch.execute(stmt);
         }
         await batch.commit(noResult: true);
+      },
+      onUpgrade: (Database db, int from, int to) async {
+        for (int version = from + 1; version <= to; version++) {
+          for (final String stmt in _migrations[version] ?? const <String>[]) {
+            await db.execute(stmt);
+          }
+        }
       },
     );
   }
@@ -59,6 +66,8 @@ class AppDatabase {
       project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
       notes TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT 'normal',
+      target_amount REAL,
       due_at INTEGER,
       has_time INTEGER NOT NULL DEFAULT 0,
       duration_minutes INTEGER,
@@ -94,6 +103,10 @@ class AppDatabase {
       notes TEXT NOT NULL DEFAULT '',
       project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
       days TEXT NOT NULL DEFAULT '',
+      repeat_mode TEXT NOT NULL DEFAULT 'weekly',
+      month_days TEXT NOT NULL DEFAULT '',
+      quest_task_id INTEGER,
+      quest_amount REAL,
       start_minutes INTEGER NOT NULL DEFAULT 480,
       end_minutes INTEGER NOT NULL DEFAULT 540,
       color INTEGER NOT NULL,
@@ -113,6 +126,8 @@ class AppDatabase {
       created_at INTEGER NOT NULL
     )
     ''',
+    _createQuestEntries,
+    _indexQuestEntries,
     '''
     CREATE TABLE settings (
       key TEXT PRIMARY KEY,
@@ -120,4 +135,33 @@ class AppDatabase {
     )
     ''',
   ];
+
+  static const String _createQuestEntries = '''
+    CREATE TABLE quest_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      amount REAL NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT '',
+      routine_id INTEGER,
+      created_at INTEGER NOT NULL
+    )
+    ''';
+
+  static const String _indexQuestEntries =
+      'CREATE INDEX idx_quest_entries_task ON quest_entries(task_id)';
+
+  /// คำสั่งอัปเกรดฐานข้อมูลของแต่ละเวอร์ชัน (รันเรียงตามเลขเวอร์ชัน)
+  static const Map<int, List<String>> _migrations = <int, List<String>>{
+    // v2 — เพิ่ม Task ประเภท "quest" (เก็บเงิน) และกิจวัตรแบบรายเดือน
+    2: <String>[
+      "ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal'",
+      'ALTER TABLE tasks ADD COLUMN target_amount REAL',
+      "ALTER TABLE routines ADD COLUMN repeat_mode TEXT NOT NULL DEFAULT 'weekly'",
+      "ALTER TABLE routines ADD COLUMN month_days TEXT NOT NULL DEFAULT ''",
+      'ALTER TABLE routines ADD COLUMN quest_task_id INTEGER',
+      'ALTER TABLE routines ADD COLUMN quest_amount REAL',
+      _createQuestEntries,
+      _indexQuestEntries,
+    ],
+  };
 }

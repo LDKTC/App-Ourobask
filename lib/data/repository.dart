@@ -3,6 +3,16 @@ import 'package:sqflite/sqflite.dart';
 import 'database.dart';
 import 'models.dart';
 
+/// ตารางข้อมูลทั้งหมด เรียงตามลำดับที่ลบได้โดยไม่ติด foreign key
+const List<String> kDataTables = <String>[
+  'quest_entries',
+  'reminders',
+  'tasks',
+  'routines',
+  'ideas',
+  'projects',
+];
+
 /// ชั้นเข้าถึงข้อมูลทั้งหมด (SQLite)
 class Repository {
   Repository([AppDatabase? db]) : _appDb = db ?? AppDatabase.instance;
@@ -104,7 +114,48 @@ class Repository {
       where: 'owner_type = ? AND owner_id = ?',
       whereArgs: <Object?>[ReminderOwner.task, id],
     );
+    await db.delete('quest_entries', where: 'task_id = ?', whereArgs: <Object?>[id]);
+    // กิจวัตรที่เคยเป็นแผนเก็บเงินของเควสนี้จะกลายเป็นกิจวัตรธรรมดา
+    await db.update(
+      'routines',
+      <String, Object?>{'quest_task_id': null, 'quest_amount': null},
+      where: 'quest_task_id = ?',
+      whereArgs: <Object?>[id],
+    );
     await db.delete('tasks', where: 'id = ?', whereArgs: <Object?>[id]);
+  }
+
+  // ----------------------------------------------------------- quest entries
+  Future<List<QuestEntry>> questEntries() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'quest_entries',
+      orderBy: 'created_at DESC, id DESC',
+    );
+    return rows.map(QuestEntry.fromMap).toList();
+  }
+
+  Future<int> insertQuestEntry(QuestEntry entry) async {
+    final Database db = await _db;
+    final Map<String, Object?> map = entry.toMap()..remove('id');
+    final int id = await db.insert('quest_entries', map);
+    entry.id = id;
+    return id;
+  }
+
+  Future<void> updateQuestEntry(QuestEntry entry) async {
+    final Database db = await _db;
+    await db.update(
+      'quest_entries',
+      entry.toMap(),
+      where: 'id = ?',
+      whereArgs: <Object?>[entry.id],
+    );
+  }
+
+  Future<void> deleteQuestEntry(int id) async {
+    final Database db = await _db;
+    await db.delete('quest_entries', where: 'id = ?', whereArgs: <Object?>[id]);
   }
 
   // --------------------------------------------------------------- reminders
@@ -185,6 +236,13 @@ class Repository {
       where: 'owner_type = ? AND owner_id = ?',
       whereArgs: <Object?>[ReminderOwner.routine, id],
     );
+    // เงินที่หยอดไปแล้วยังอยู่ เพียงแต่ไม่ผูกกับแผนที่ถูกลบอีกต่อไป
+    await db.update(
+      'quest_entries',
+      <String, Object?>{'routine_id': null},
+      where: 'routine_id = ?',
+      whereArgs: <Object?>[id],
+    );
     await db.delete('routines', where: 'id = ?', whereArgs: <Object?>[id]);
   }
 
@@ -247,13 +305,7 @@ class Repository {
   Future<void> clearAll() async {
     final Database db = await _db;
     final Batch batch = db.batch();
-    for (final String table in <String>[
-      'reminders',
-      'tasks',
-      'routines',
-      'ideas',
-      'projects',
-    ]) {
+    for (final String table in kDataTables) {
       batch.delete(table);
     }
     await batch.commit(noResult: true);
@@ -266,16 +318,11 @@ class Repository {
     required List<Reminder> reminders,
     required List<Routine> routines,
     required List<Idea> ideas,
+    List<QuestEntry> questEntries = const <QuestEntry>[],
   }) async {
     final Database db = await _db;
     await db.transaction((Transaction txn) async {
-      for (final String table in <String>[
-        'reminders',
-        'tasks',
-        'routines',
-        'ideas',
-        'projects',
-      ]) {
+      for (final String table in kDataTables) {
         await txn.delete(table);
       }
       for (final Project item in projects) {
@@ -293,6 +340,9 @@ class Repository {
       for (final Reminder item in reminders) {
         await txn.insert('reminders', item.toMap());
       }
+      for (final QuestEntry item in questEntries) {
+        await txn.insert('quest_entries', item.toMap());
+      }
     });
   }
 
@@ -303,6 +353,7 @@ class Repository {
     required List<Reminder> reminders,
     required List<Routine> routines,
     required List<Idea> ideas,
+    List<QuestEntry> questEntries = const <QuestEntry>[],
   }) async {
     final Map<int, int> projectIdMap = <int, int>{};
     final Map<int, int> taskIdMap = <int, int>{};
@@ -327,6 +378,10 @@ class Repository {
       routine.projectId = routine.projectId == null
           ? null
           : projectIdMap[routine.projectId];
+      routine.questTaskId = routine.questTaskId == null
+          ? null
+          : taskIdMap[routine.questTaskId];
+      if (routine.questTaskId == null) routine.questAmount = null;
       final int newId = await insertRoutine(routine);
       if (oldId != null) routineIdMap[oldId] = newId;
     }
@@ -345,6 +400,14 @@ class Repository {
       reminder.id = null;
       reminder.ownerId = owner;
       await insertReminder(reminder);
+    }
+    for (final QuestEntry entry in questEntries) {
+      final int? taskId = taskIdMap[entry.taskId];
+      if (taskId == null) continue;
+      entry.id = null;
+      entry.taskId = taskId;
+      entry.routineId = entry.routineId == null ? null : routineIdMap[entry.routineId];
+      await insertQuestEntry(entry);
     }
   }
 }

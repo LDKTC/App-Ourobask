@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app_info.dart';
 import '../data/backup.dart';
 import '../services/notification_service.dart';
 import '../services/sound_service.dart';
 import '../state/app_state.dart';
+import 'update_page.dart';
 import 'widgets/common.dart';
 
 /// ตั้งค่า — ธีม การเตือน เสียงเริ่มต้น และ Export / Import ข้อมูล
@@ -232,6 +234,24 @@ class SettingsPage extends StatelessWidget {
                   },
                 ),
               ],
+            ),
+          ),
+          const SectionHeader(
+            title: 'เกี่ยวกับแอป',
+            subtitle: 'เวอร์ชันและการอัปเดต',
+            icon: Icons.info_outline_rounded,
+          ),
+          Card(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: ListTile(
+              leading: const Icon(Icons.system_update_rounded),
+              title: const Text('ตรวจสอบอัปเดตแอป'),
+              subtitle: Text('เวอร์ชัน ${AppInfo.version} • อัปเดตจาก GitHub Releases'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const UpdatePage()),
+              ),
             ),
           ),
           const SizedBox(height: 20),
