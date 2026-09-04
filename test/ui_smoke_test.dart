@@ -26,10 +26,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('หย่อนไอเดีย'), findsOneWidget);
     expect(find.text('เปิดกล่อง'), findsOneWidget);
+    expect(find.text('สุ่มไอเดีย'), findsOneWidget);
     final Rect drop = tester.getRect(find.text('หย่อนไอเดีย'));
     final Rect open = tester.getRect(find.text('เปิดกล่อง'));
     expect(open.top, greaterThan(drop.bottom));
     expect(open.width, lessThan(drop.width));
+
+    // ปุ่มสุ่มไอเดียอยู่ใต้ปุ่มเปิดกล่องและขนาดเท่ากัน
+    final Rect openButton = tester.getRect(
+      find.widgetWithText(FilledButton, 'เปิดกล่อง'),
+    );
+    final Rect randomButton = tester.getRect(
+      find.widgetWithText(FilledButton, 'สุ่มไอเดีย'),
+    );
+    expect(randomButton.top, greaterThan(openButton.bottom));
+    expect(randomButton.size, openButton.size);
   });
 
   testWidgets('ประวัติงานว่างเปล่าแสดงข้อความ', (WidgetTester tester) async {
