@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 /// ค่าคงที่สีที่เลือกได้สำหรับ Task / Project / Idea / Routine
@@ -540,4 +542,108 @@ class Idea {
   );
 
   Idea copy() => Idea.fromMap(toMap());
+}
+
+/// หยิบไอเดียขึ้นมาหนึ่งใบแบบสุ่มจากกองทั้งหมด
+///
+/// [excludeId] ใช้กันไม่ให้สุ่มได้ใบเดิมซ้ำติดกัน (ถ้าในกองเหลือใบเดียวก็ยอมซ้ำ)
+Idea? randomIdeaFrom(List<Idea> pile, {int? excludeId, Random? random}) {
+  if (pile.isEmpty) return null;
+  final List<Idea> pool = pile.where((Idea i) => i.id != excludeId).toList();
+  final List<Idea> choices = pool.isEmpty ? pile : pool;
+  return choices[(random ?? Random()).nextInt(choices.length)];
+}
+
+/// โน้ตของโฟลเดอร์งาน — สร้างและอ่านได้เฉพาะภายใน Work Project เท่านั้น
+///
+/// ต่างจาก [Task] ตรงที่ไม่มีกำหนดส่ง ไม่มีการเตือน และไม่โผล่ในหน้าแรก/ปฏิทิน
+/// จึงใช้เก็บข้อมูลประกอบของโปรเจกต์ เช่น สรุปประชุม ลิงก์ หรือรายการที่ต้องจำ
+class Note {
+  Note({
+    this.id,
+    required this.projectId,
+    this.title = '',
+    this.content = '',
+    this.color = 0xFF3F72AF,
+    this.pinned = false,
+    this.sortOrder = 0,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
+
+  int? id;
+
+  /// โฟลเดอร์งานที่โน้ตนี้สังกัด — โน้ตอยู่นอกโฟลเดอร์ไม่ได้
+  int projectId;
+  String title;
+  String content;
+  int color;
+
+  /// ปักหมุดให้ลอยอยู่บนสุดของโฟลเดอร์
+  bool pinned;
+  int sortOrder;
+  DateTime createdAt;
+  DateTime updatedAt;
+
+  bool get isEmpty => title.trim().isEmpty && content.trim().isEmpty;
+
+  /// หัวข้อที่ใช้แสดงจริง — ถ้าไม่ได้ตั้งชื่อจะยืมบรรทัดแรกของเนื้อหามาใช้
+  String get displayTitle {
+    final String name = title.trim();
+    if (name.isNotEmpty) return name;
+    final String first = content.trim().split('\n').first.trim();
+    return first.isEmpty ? 'โน้ตไม่มีชื่อ' : first;
+  }
+
+  /// เนื้อหาย่อสำหรับการ์ด (ข้ามบรรทัดแรกถ้าถูกยืมไปเป็นหัวข้อแล้ว)
+  String get preview {
+    final List<String> lines = content.trim().split('\n');
+    final Iterable<String> body = title.trim().isEmpty ? lines.skip(1) : lines;
+    return body.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  /// ค้นหาจากทั้งหัวข้อและเนื้อหา
+  bool matches(String query) {
+    final String needle = query.trim().toLowerCase();
+    if (needle.isEmpty) return true;
+    return title.toLowerCase().contains(needle) || content.toLowerCase().contains(needle);
+  }
+
+  Map<String, Object?> toMap() => <String, Object?>{
+    'id': id,
+    'project_id': projectId,
+    'title': title,
+    'content': content,
+    'color': color,
+    'pinned': pinned ? 1 : 0,
+    'sort_order': sortOrder,
+    'created_at': createdAt.millisecondsSinceEpoch,
+    'updated_at': updatedAt.millisecondsSinceEpoch,
+  };
+
+  static Note fromMap(Map<String, Object?> m) => Note(
+    id: m['id'] as int?,
+    projectId: m['project_id'] as int? ?? 0,
+    title: m['title'] as String? ?? '',
+    content: m['content'] as String? ?? '',
+    color: m['color'] as int? ?? 0xFF3F72AF,
+    pinned: _boolOf(m['pinned']),
+    sortOrder: m['sort_order'] as int? ?? 0,
+    createdAt: _dateOf(m['created_at']) ?? DateTime.now(),
+    updatedAt: _dateOf(m['updated_at']) ?? DateTime.now(),
+  );
+
+  Note copy() => Note.fromMap(toMap());
+
+  /// สร้างโน้ตจากไอเดียในกล่อง — บรรทัดแรกกลายเป็นหัวข้อ ที่เหลือเป็นเนื้อหา
+  static Note fromIdea(Idea idea, {required int projectId}) {
+    final List<String> lines = idea.content.trim().split('\n');
+    return Note(
+      projectId: projectId,
+      title: lines.first.trim(),
+      content: lines.length > 1 ? lines.sublist(1).join('\n').trim() : '',
+      color: idea.color,
+    );
+  }
 }

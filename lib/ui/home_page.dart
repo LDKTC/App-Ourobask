@@ -83,15 +83,6 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Ourobask'),
         actions: <Widget>[
           IconButton(
-            tooltip: state.showCompleted ? 'ซ่อนงานที่เสร็จแล้ว' : 'แสดงงานที่เสร็จแล้ว',
-            icon: Icon(
-              state.showCompleted
-                  ? Icons.visibility_rounded
-                  : Icons.visibility_off_rounded,
-            ),
-            onPressed: () => state.setShowCompleted(!state.showCompleted),
-          ),
-          IconButton(
             tooltip: 'ประวัติงานที่เสร็จแล้ว',
             icon: const Icon(Icons.history_rounded),
             onPressed: () => Navigator.push(

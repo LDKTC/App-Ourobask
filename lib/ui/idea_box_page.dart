@@ -1,9 +1,12 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/models.dart';
 import '../state/app_state.dart';
 import '../utils/formatters.dart';
+import 'idea_random_sheet.dart';
 import 'widgets/common.dart';
 
 /// กล่องไอเดีย — โน้ตข้างในจะไม่แสดงจนกว่าจะเปิดกล่อง
@@ -17,6 +20,10 @@ class IdeaBoxPage extends StatefulWidget {
 class _IdeaBoxPageState extends State<IdeaBoxPage> {
   bool _open = false;
   final Set<int> _selected = <int>{};
+  final Random _random = Random();
+
+  /// ใบที่เพิ่งสุ่มได้ ใช้กันไม่ให้สุ่มซ้ำใบเดิมติดกัน
+  int? _lastRandomId;
 
   void _toggleBox() {
     setState(() {
@@ -29,6 +36,65 @@ class _IdeaBoxPageState extends State<IdeaBoxPage> {
     final Idea? idea = await showIdeaEditor(context);
     if (idea == null || !mounted) return;
     showSnack(context, _open ? 'เพิ่มไอเดียแล้ว' : 'หย่อนไอเดียลงกล่องแล้ว');
+  }
+
+  /// สุ่มไอเดียขึ้นมาหนึ่งใบจากกองทั้งหมด แล้วเปิดดูแบบอ่านอย่างเดียว
+  Future<void> _randomIdea() async {
+    final AppState state = context.read<AppState>();
+    final Idea? idea = randomIdeaFrom(
+      state.ideas,
+      excludeId: _lastRandomId,
+      random: _random,
+    );
+    if (idea == null) {
+      showSnack(context, 'กล่องยังว่างอยู่ ลองหย่อนไอเดียลงไปก่อน');
+      return;
+    }
+    _lastRandomId = idea.id;
+    final RandomIdeaAction? action = await showRandomIdeaSheet(context, idea);
+    if (action != RandomIdeaAction.create || !mounted) return;
+    await _createFromIdea(idea);
+  }
+
+  /// เอาไอเดียใบเดียวไปสร้างเป็นงานหรือโน้ต (ไอเดียจะออกจากกล่องไปเลย)
+  Future<void> _createFromIdea(Idea idea) async {
+    final AppState state = context.read<AppState>();
+    final IdeaTarget? target = await showIdeaTargetSheet(context);
+    if (target == null || !mounted) return;
+
+    if (target == IdeaTarget.task) {
+      final _ConvertOptions? options = await showModalBottomSheet<_ConvertOptions>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (BuildContext context) => const _ConvertSheet(count: 1),
+      );
+      if (options == null) return;
+      await state.convertIdeaToTask(
+        idea,
+        projectId: options.projectId,
+        due: options.due,
+        hasTime: options.hasTime,
+      );
+      if (mounted) showSnack(context, 'สร้างงานจากไอเดียนี้แล้ว');
+      return;
+    }
+
+    if (state.projects.isEmpty) {
+      showSnack(context, 'โน้ตต้องอยู่ในโฟลเดอร์งาน — สร้างโฟลเดอร์ก่อนนะ');
+      return;
+    }
+    final int? projectId = await showNoteProjectPicker(context);
+    if (projectId == null || !mounted) return;
+    await state.convertIdeaToNote(idea, projectId: projectId);
+    if (!mounted) return;
+    final Project? project = state.projectById(projectId);
+    showSnack(
+      context,
+      project == null
+          ? 'สร้างโน้ตจากไอเดียนี้แล้ว'
+          : 'สร้างโน้ตไว้ในโฟลเดอร์ "${project.name}" แล้ว',
+    );
   }
 
   Future<void> _convertSelected() async {
@@ -88,6 +154,11 @@ class _IdeaBoxPageState extends State<IdeaBoxPage> {
       appBar: AppBar(
         title: const Text('กล่องไอเดีย'),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'สุ่มไอเดียหนึ่งใบ',
+            icon: const Icon(Icons.casino_rounded),
+            onPressed: _randomIdea,
+          ),
           if (_open)
             TextButton.icon(
               onPressed: _toggleBox,
@@ -174,10 +245,7 @@ class _ClosedBox extends StatelessWidget {
                       onPressed: onDrop,
                       style: FilledButton.styleFrom(
                         elevation: 3,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 16,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                         textStyle: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -193,10 +261,7 @@ class _ClosedBox extends StatelessWidget {
                         elevation: 2,
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         textStyle: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

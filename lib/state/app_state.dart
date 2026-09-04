@@ -75,7 +75,6 @@ class AppState extends ChangeNotifier {
   static const String keyBuddhistYear = 'buddhist_year';
   static const String keyDefaultSoundUri = 'default_sound_uri';
   static const String keyDefaultSoundName = 'default_sound_name';
-  static const String keyShowCompleted = 'show_completed';
   static const String keyUpdateAutoCheck = 'update_auto_check';
   static const String keyUpdateLastCheck = 'update_last_check';
   static const String keyUpdateSkippedVersion = 'update_skipped_version';
@@ -86,6 +85,7 @@ class AppState extends ChangeNotifier {
   List<Routine> _routines = <Routine>[];
   List<Idea> _ideas = <Idea>[];
   List<QuestEntry> _questEntries = <QuestEntry>[];
+  List<Note> _notes = <Note>[];
   Map<String, String> _settings = <String, String>{};
   bool _loading = true;
 
@@ -95,6 +95,9 @@ class AppState extends ChangeNotifier {
   List<Idea> get ideas => List<Idea>.unmodifiable(_ideas.where((Idea i) => !i.archived));
   List<Reminder> get reminders => List<Reminder>.unmodifiable(_reminders);
   List<QuestEntry> get questEntries => List<QuestEntry>.unmodifiable(_questEntries);
+
+  /// โน้ตทั้งหมด — เข้าถึงได้ผ่านโฟลเดอร์งานเท่านั้น ดู [notesOfProject]
+  List<Note> get notes => List<Note>.unmodifiable(_notes);
   bool get isLoading => _loading;
 
   ThemeMode get themeMode {
@@ -120,7 +123,6 @@ class AppState extends ChangeNotifier {
 
   /// เวอร์ชันที่ผู้ใช้กด "ข้ามไปก่อน" ไว้
   String? get updateSkippedVersion => _settings[keyUpdateSkippedVersion];
-  bool get showCompleted => (_settings[keyShowCompleted] ?? '0') == '1';
   String? get defaultSoundUri => _settings[keyDefaultSoundUri];
   String? get defaultSoundName => _settings[keyDefaultSoundName];
 
@@ -134,6 +136,7 @@ class AppState extends ChangeNotifier {
     _routines = await _repo.routines();
     _ideas = await _repo.ideas();
     _questEntries = await _repo.questEntries();
+    _notes = await _repo.notes();
     _loading = false;
     // งานที่ทำเสร็จเกินระยะเวลาที่เก็บไว้จะถูกล้างออกทุกครั้งที่เปิดแอป
     await _purgeExpiredCompleted(silent: true);
@@ -152,6 +155,7 @@ class AppState extends ChangeNotifier {
     _routines = await _repo.routines();
     _ideas = await _repo.ideas();
     _questEntries = await _repo.questEntries();
+    _notes = await _repo.notes();
     notifyListeners();
   }
 
@@ -175,9 +179,6 @@ class AppState extends ChangeNotifier {
 
   Future<void> setBuddhistYear(bool value) =>
       setSetting(keyBuddhistYear, value ? '1' : '0');
-
-  Future<void> setShowCompleted(bool value) =>
-      setSetting(keyShowCompleted, value ? '1' : '0');
 
   Future<void> setUpdateAutoCheck(bool value) =>
       setSetting(keyUpdateAutoCheck, value ? '1' : '0');
@@ -561,6 +562,73 @@ class AppState extends ChangeNotifier {
     return task;
   }
 
+  // ------------------------------------------------------------------ notes
+  /// โน้ตของโฟลเดอร์งานหนึ่ง — ปักหมุดขึ้นก่อน แล้วเรียงจากที่แก้ไขล่าสุด
+  List<Note> notesOfProject(int? projectId) {
+    if (projectId == null) return <Note>[];
+    final List<Note> list = _notes.where((Note n) => n.projectId == projectId).toList()
+      ..sort((Note a, Note b) {
+        if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+    return list;
+  }
+
+  int noteCountOfProject(int? projectId) {
+    if (projectId == null) return 0;
+    return _notes.where((Note n) => n.projectId == projectId).length;
+  }
+
+  /// บันทึกโน้ต — โน้ตที่ไม่มีทั้งหัวข้อและเนื้อหาจะถูกทิ้ง (คืน false)
+  Future<bool> saveNote(Note note) async {
+    if (note.isEmpty) {
+      if (note.id != null) await deleteNote(note);
+      return false;
+    }
+    if (note.id == null) {
+      note.sortOrder = noteCountOfProject(note.projectId);
+      await _repo.insertNote(note);
+    } else {
+      await _repo.updateNote(note);
+    }
+    _notes = await _repo.notes();
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> setNotePinned(Note note, bool pinned) async {
+    if (note.id == null || note.pinned == pinned) return;
+    note.pinned = pinned;
+    // ปักหมุดไม่ใช่การแก้เนื้อหา จึงไม่ขยับเวลาแก้ไขล่าสุดและลำดับของโน้ต
+    await _repo.updateNote(note, touch: false);
+    _notes = await _repo.notes();
+    notifyListeners();
+  }
+
+  Future<void> deleteNote(Note note) async {
+    final int? id = note.id;
+    if (id == null) return;
+    await _repo.deleteNote(id);
+    _notes = await _repo.notes();
+    notifyListeners();
+  }
+
+  /// ย้ายไอเดียออกจากกล่องไปเป็นโน้ตในโฟลเดอร์งาน (โน้ตอยู่นอกโฟลเดอร์ไม่ได้)
+  Future<Note> convertIdeaToNote(
+    Idea idea, {
+    required int projectId,
+    bool keepIdea = false,
+  }) async {
+    final Note note = Note.fromIdea(idea, projectId: projectId);
+    note.sortOrder = noteCountOfProject(projectId);
+    await _repo.insertNote(note);
+    if (!keepIdea && idea.id != null) await _repo.deleteIdea(idea.id!);
+    _notes = await _repo.notes();
+    _ideas = await _repo.ideas();
+    notifyListeners();
+    return note;
+  }
+
   // -------------------------------------------------------------- reminders
   List<Reminder> remindersOf(String ownerType, int? ownerId) {
     if (ownerId == null) return <Reminder>[];
@@ -725,7 +793,8 @@ class AppState extends ChangeNotifier {
     final Map<DeadlineBucket, List<Task>> map = <DeadlineBucket, List<Task>>{};
     final DateTime now = DateTime.now();
     for (final Task task in _tasks) {
-      if (task.done && !showCompleted) continue;
+      // งานที่ทำเสร็จแล้วย้ายไปอยู่ในประวัติงาน ไม่แสดงในรายการอีก
+      if (task.done) continue;
       map.putIfAbsent(bucketOf(task, now: now), () => <Task>[]).add(task);
     }
     for (final List<Task> list in map.values) {
@@ -753,10 +822,7 @@ class AppState extends ChangeNotifier {
   List<Task> tasksOn(DateTime day) {
     final List<Task> list =
         _tasks
-            .where(
-              (Task t) =>
-                  t.due != null && isSameDay(t.due!, day) && (!t.done || showCompleted),
-            )
+            .where((Task t) => !t.done && t.due != null && isSameDay(t.due!, day))
             .toList()
           ..sort(_compareTasks);
     return list;
@@ -808,6 +874,7 @@ class AppState extends ChangeNotifier {
         routines: payload.routines,
         ideas: payload.ideas,
         questEntries: payload.questEntries,
+        notes: payload.notes,
       );
     } else {
       await _repo.mergeAll(
@@ -817,6 +884,7 @@ class AppState extends ChangeNotifier {
         routines: payload.routines,
         ideas: payload.ideas,
         questEntries: payload.questEntries,
+        notes: payload.notes,
       );
     }
     await _reloadAll();

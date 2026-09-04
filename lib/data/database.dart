@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String fileName = 'ourobask.db';
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   Database? _db;
 
@@ -128,6 +128,8 @@ class AppDatabase {
     ''',
     _createQuestEntries,
     _indexQuestEntries,
+    _createNotes,
+    _indexNotes,
     '''
     CREATE TABLE settings (
       key TEXT PRIMARY KEY,
@@ -150,6 +152,23 @@ class AppDatabase {
   static const String _indexQuestEntries =
       'CREATE INDEX idx_quest_entries_task ON quest_entries(task_id)';
 
+  /// โน้ตอยู่นอกโฟลเดอร์งานไม่ได้ ลบโฟลเดอร์แล้วโน้ตข้างในจึงหายตามไปด้วย
+  static const String _createNotes = '''
+    CREATE TABLE notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      title TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      color INTEGER NOT NULL,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+    ''';
+
+  static const String _indexNotes = 'CREATE INDEX idx_notes_project ON notes(project_id)';
+
   /// คำสั่งอัปเกรดฐานข้อมูลของแต่ละเวอร์ชัน (รันเรียงตามเลขเวอร์ชัน)
   static const Map<int, List<String>> _migrations = <int, List<String>>{
     // v2 — เพิ่ม Task ประเภท "quest" (เก็บเงิน) และกิจวัตรแบบรายเดือน
@@ -163,5 +182,7 @@ class AppDatabase {
       _createQuestEntries,
       _indexQuestEntries,
     ],
+    // v3 — เพิ่มโน้ตที่อยู่ในโฟลเดอร์งาน (Work Project)
+    3: <String>[_createNotes, _indexNotes],
   };
 }
