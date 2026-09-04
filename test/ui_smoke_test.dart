@@ -9,6 +9,7 @@ import 'package:ourobask/ui/note_editor_page.dart';
 import 'package:ourobask/ui/project_notes_page.dart';
 import 'package:ourobask/ui/task_history_page.dart';
 import 'package:ourobask/ui/widgets/note_tile.dart';
+import 'package:ourobask/utils/formatters.dart';
 import 'package:provider/provider.dart';
 
 /// หน้าเหล่านี้อ่านข้อมูลจาก [AppState] ที่ยังว่าง (ยังไม่เรียก load) จึงไม่แตะฐานข้อมูล
@@ -144,5 +145,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ไปยังเดือน'), findsOneWidget);
     expect(find.text('วันนี้'), findsWidgets);
+
+    // แสดงเป็นตาราง โดยมีชื่อปีกำกับอยู่ด้านบนของแต่ละหน้า
+    final DateTime now = DateTime.now();
+    expect(find.text('ปี ${Fmt.displayYear(now.year)}'), findsOneWidget);
+    expect(find.byType(SliverGrid), findsWidgets);
+    expect(find.text(Fmt.monthsShort[now.month - 1]), findsWidgets);
   });
 }
