@@ -22,6 +22,25 @@ class TaskTile extends StatelessWidget {
   final bool dense;
   final bool showProject;
 
+  Future<void> _setDone(BuildContext context, AppState state, bool done) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final String title = task.title;
+    await state.toggleTaskDone(task, done);
+    if (!done) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('"$title" ย้ายไปประวัติงานแล้ว'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'เลิกทำ',
+            onPressed: () => state.toggleTaskDone(task, false),
+          ),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -47,7 +66,8 @@ class TaskTile extends StatelessWidget {
                 value: task.done,
                 activeColor: accent,
                 shape: const CircleBorder(),
-                onChanged: (bool? value) => state.toggleTaskDone(task, value ?? false),
+                // ติ๊กเสร็จแล้วงานจะหายไปจากรายการ จึงบอกที่อยู่ใหม่พร้อมปุ่มเลิกทำ
+                onChanged: (bool? value) => _setDone(context, state, value ?? false),
               ),
               Container(
                 width: 3,

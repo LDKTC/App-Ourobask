@@ -4,6 +4,7 @@ import 'package:ourobask/data/models.dart';
 import 'package:ourobask/state/app_state.dart';
 import 'package:ourobask/ui/calendar/calendar_page.dart';
 import 'package:ourobask/ui/idea_box_page.dart';
+import 'package:ourobask/ui/idea_random_sheet.dart';
 import 'package:ourobask/ui/note_editor_page.dart';
 import 'package:ourobask/ui/project_notes_page.dart';
 import 'package:ourobask/ui/task_history_page.dart';
@@ -46,6 +47,46 @@ void main() {
     await tester.tap(find.text('บันทึก'));
     await tester.pump();
     expect(find.text('เขียนหัวข้อหรือเนื้อหาก่อนบันทึก'), findsOneWidget);
+  });
+
+  testWidgets('แผ่นสุ่มไอเดียอ่านอย่างเดียว และปุ่มสองปุ่มกว้างเท่ากัน', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    int kept = 0;
+    int created = 0;
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: RandomIdeaSheet(
+            idea: Idea(id: 1, content: 'ทำแอปจดสูตรอาหาร'),
+            onKeep: () => kept++,
+            onCreate: () => created++,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // อ่านอย่างเดียว — ไม่มีช่องให้พิมพ์แก้ไอเดียในแผ่นนี้
+    expect(find.text('ทำแอปจดสูตรอาหาร'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+
+    final Rect keep = tester.getRect(find.text('เก็บกลับเข้ากล่อง'));
+    final Rect create = tester.getRect(find.text('สร้างงาน / โน้ต'));
+    final Rect keepButton = tester.getRect(find.byType(OutlinedButton));
+    final Rect createButton = tester.getRect(find.byType(FilledButton));
+    // ปุ่มอยู่แถวเดียวกันและแบ่งความกว้างเท่ากันพอดี (1:1)
+    expect(keep.center.dy, closeTo(create.center.dy, 1));
+    expect(keepButton.width, closeTo(createButton.width, 0.5));
+    expect(keepButton.right, lessThanOrEqualTo(createButton.left));
+
+    await tester.tap(find.byType(OutlinedButton));
+    await tester.tap(find.byType(FilledButton));
+    expect(kept, 1);
+    expect(created, 1);
   });
 
   testWidgets('การ์ดโน้ตแสดงหัวข้อ เนื้อหาย่อ และปุ่มปักหมุด', (

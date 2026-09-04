@@ -47,7 +47,8 @@ class ProjectDetailPage extends StatelessWidget {
         if (db == null) return -1;
         return da.compareTo(db);
       });
-    final List<Task> done = tasks.where((Task t) => t.done).toList();
+    // งานที่ทำเสร็จแล้วไม่แสดงในโฟลเดอร์อีก ย้ายไปดูที่ประวัติงานแทน
+    final int doneCount = tasks.length - open.length;
     final List<Routine> routines = state.routines
         .where((Routine r) => r.projectId == projectId)
         .toList();
@@ -122,14 +123,15 @@ class ProjectDetailPage extends StatelessWidget {
             const SizedBox(height: 8),
             MoneySummaryCard(summary: money, color: color),
           ],
-          if (tasks.isEmpty && routines.isEmpty && notes.isEmpty)
+          if (open.isEmpty && routines.isEmpty && notes.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 60),
               child: EmptyState(
-                icon: Icons.assignment_outlined,
-                title: 'โฟลเดอร์นี้ยังว่าง',
-                message:
-                    'เพิ่มงานที่ต้องการเก็บไว้ทำ หรือเขียนโน้ตของโปรเจกต์นี้ไว้ก่อนก็ได้',
+                icon: doneCount > 0 ? Icons.task_alt_rounded : Icons.assignment_outlined,
+                title: doneCount > 0 ? 'ทำครบทุกงานแล้ว' : 'โฟลเดอร์นี้ยังว่าง',
+                message: doneCount > 0
+                    ? 'งานที่เสร็จแล้ว $doneCount รายการย้ายไปอยู่ในประวัติงาน'
+                    : 'เพิ่มงานที่ต้องการเก็บไว้ทำ หรือเขียนโน้ตของโปรเจกต์นี้ไว้ก่อนก็ได้',
                 action: FilledButton.icon(
                   onPressed: () => Navigator.push(
                     context,
@@ -225,27 +227,6 @@ class ProjectDetailPage extends StatelessWidget {
                   notes.length > _notePreviewCount
                       ? 'ดูโน้ตอีก ${notes.length - _notePreviewCount} รายการ'
                       : 'ดูโน้ตทั้งหมด',
-                ),
-              ),
-            ),
-          ],
-          if (done.isNotEmpty) ...<Widget>[
-            SectionHeader(
-              title: 'เสร็จแล้ว',
-              color: theme.colorScheme.outline,
-              count: done.length,
-            ),
-            ...done.map(
-              (Task task) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: TaskTile(
-                  task: task,
-                  dense: true,
-                  showProject: false,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(builder: (_) => TaskEditorPage(task: task)),
-                  ),
                 ),
               ),
             ),

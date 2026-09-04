@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 /// ค่าคงที่สีที่เลือกได้สำหรับ Task / Project / Idea / Routine
@@ -542,6 +544,16 @@ class Idea {
   Idea copy() => Idea.fromMap(toMap());
 }
 
+/// หยิบไอเดียขึ้นมาหนึ่งใบแบบสุ่มจากกองทั้งหมด
+///
+/// [excludeId] ใช้กันไม่ให้สุ่มได้ใบเดิมซ้ำติดกัน (ถ้าในกองเหลือใบเดียวก็ยอมซ้ำ)
+Idea? randomIdeaFrom(List<Idea> pile, {int? excludeId, Random? random}) {
+  if (pile.isEmpty) return null;
+  final List<Idea> pool = pile.where((Idea i) => i.id != excludeId).toList();
+  final List<Idea> choices = pool.isEmpty ? pile : pool;
+  return choices[(random ?? Random()).nextInt(choices.length)];
+}
+
 /// โน้ตของโฟลเดอร์งาน — สร้างและอ่านได้เฉพาะภายใน Work Project เท่านั้น
 ///
 /// ต่างจาก [Task] ตรงที่ไม่มีกำหนดส่ง ไม่มีการเตือน และไม่โผล่ในหน้าแรก/ปฏิทิน
@@ -623,4 +635,15 @@ class Note {
   );
 
   Note copy() => Note.fromMap(toMap());
+
+  /// สร้างโน้ตจากไอเดียในกล่อง — บรรทัดแรกกลายเป็นหัวข้อ ที่เหลือเป็นเนื้อหา
+  static Note fromIdea(Idea idea, {required int projectId}) {
+    final List<String> lines = idea.content.trim().split('\n');
+    return Note(
+      projectId: projectId,
+      title: lines.first.trim(),
+      content: lines.length > 1 ? lines.sublist(1).join('\n').trim() : '',
+      color: idea.color,
+    );
+  }
 }

@@ -67,13 +67,6 @@ class SettingsPage extends StatelessWidget {
                   value: state.buddhistYear,
                   onChanged: state.setBuddhistYear,
                 ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary: const Icon(Icons.checklist_rounded),
-                  title: const Text('แสดงงานที่เสร็จแล้ว'),
-                  value: state.showCompleted,
-                  onChanged: state.setShowCompleted,
-                ),
               ],
             ),
           ),

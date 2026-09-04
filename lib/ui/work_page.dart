@@ -19,7 +19,7 @@ class WorkPage extends StatelessWidget {
     final AppState state = context.watch<AppState>();
     final List<Project> projects = state.projects;
     final List<Task> loose = state.tasks
-        .where((Task t) => t.projectId == null && (!t.done || state.showCompleted))
+        .where((Task t) => t.projectId == null && !t.done)
         .toList();
     final MoneySummary money = state.moneyOverall;
 
