@@ -154,11 +154,12 @@ class _IdeaBoxPageState extends State<IdeaBoxPage> {
       appBar: AppBar(
         title: const Text('กล่องไอเดีย'),
         actions: <Widget>[
-          IconButton(
-            tooltip: 'สุ่มไอเดียหนึ่งใบ',
-            icon: const Icon(Icons.casino_rounded),
-            onPressed: _randomIdea,
-          ),
+          if (_open)
+            IconButton(
+              tooltip: 'สุ่มไอเดียหนึ่งใบ',
+              icon: const Icon(Icons.casino_rounded),
+              onPressed: _randomIdea,
+            ),
           if (_open)
             TextButton.icon(
               onPressed: _toggleBox,
@@ -210,20 +211,39 @@ class _IdeaBoxPageState extends State<IdeaBoxPage> {
               onEdit: (Idea idea) => showIdeaEditor(context, idea: idea),
               onClose: _toggleBox,
             )
-          : _ClosedBox(onOpen: _toggleBox, onDrop: _addIdea),
+          : _ClosedBox(
+              onOpen: _toggleBox,
+              onDrop: _addIdea,
+              onRandom: _randomIdea,
+            ),
     );
   }
 }
 
+/// สไตล์ปุ่มเล็กใต้ปุ่ม "หย่อนไอเดีย" — ใช้ร่วมกันเพื่อให้ทุกปุ่มขนาดเท่ากัน
+final ButtonStyle _smallBoxButtonStyle = FilledButton.styleFrom(
+  elevation: 2,
+  minimumSize: Size.zero,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+);
+
 /// กล่องปิด — ตั้งใจไม่แสดงเนื้อหาหรือจำนวนไอเดียข้างใน
 ///
 /// ปุ่ม "หย่อนไอเดีย" อยู่กลางจอและอยู่หน้ากล่อง ส่วนปุ่ม "เปิดกล่อง"
-/// เป็นปุ่มเล็กกว่าอยู่ใต้ปุ่มหย่อนไอเดีย
+/// กับ "สุ่มไอเดีย" เป็นปุ่มเล็กกว่าอยู่ใต้ปุ่มหย่อนไอเดีย
+/// โดยสองปุ่มล่างกว้างเท่ากันเสมอ
 class _ClosedBox extends StatelessWidget {
-  const _ClosedBox({required this.onOpen, required this.onDrop});
+  const _ClosedBox({
+    required this.onOpen,
+    required this.onDrop,
+    required this.onRandom,
+  });
 
   final VoidCallback onOpen;
   final VoidCallback onDrop;
+  final VoidCallback onRandom;
 
   @override
   Widget build(BuildContext context) {
@@ -255,20 +275,28 @@ class _ClosedBox extends StatelessWidget {
                       label: const Text('หย่อนไอเดีย'),
                     ),
                     const SizedBox(height: 10),
-                    FilledButton.tonalIcon(
-                      onPressed: onOpen,
-                      style: FilledButton.styleFrom(
-                        elevation: 2,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        textStyle: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    // สองปุ่มนี้อยู่ใน IntrinsicWidth + stretch จึงกว้างเท่ากัน
+                    // ตามปุ่มที่ป้ายยาวกว่า และสูงเท่ากันเพราะใช้สไตล์เดียวกัน
+                    IntrinsicWidth(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          FilledButton.tonalIcon(
+                            onPressed: onOpen,
+                            style: _smallBoxButtonStyle,
+                            icon: const Icon(Icons.lock_open_rounded, size: 15),
+                            label: const Text('เปิดกล่อง'),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.tonalIcon(
+                            onPressed: onRandom,
+                            style: _smallBoxButtonStyle,
+                            icon: const Icon(Icons.casino_rounded, size: 15),
+                            label: const Text('สุ่มไอเดีย'),
+                          ),
+                        ],
                       ),
-                      icon: const Icon(Icons.lock_open_rounded, size: 15),
-                      label: const Text('เปิดกล่อง'),
                     ),
                   ],
                 ),

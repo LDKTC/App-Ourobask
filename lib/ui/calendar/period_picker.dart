@@ -22,6 +22,15 @@ Future<DateTime?> showPeriodJumpSheet(
   );
 }
 
+/// หนึ่ง "หน้า" ของตาราง เช่น หนึ่งเดือน (กองสัปดาห์) หรือหนึ่งปี (กองเดือน)
+class _PeriodPage {
+  const _PeriodPage({required this.title, required this.values});
+
+  /// ชื่อที่เขียนกำกับไว้ด้านบนของหน้า
+  final String title;
+  final List<DateTime> values;
+}
+
 class _PeriodJumpSheet extends StatefulWidget {
   const _PeriodJumpSheet({required this.mode, required this.anchor});
 
@@ -33,7 +42,13 @@ class _PeriodJumpSheet extends StatefulWidget {
 }
 
 class _PeriodJumpSheetState extends State<_PeriodJumpSheet> {
-  static const double _itemExtent = 58;
+  /// ขนาดคงที่ของตาราง ใช้ทั้งวาดและคำนวณจุดเริ่มเลื่อน
+  static const int _columns = 3;
+  static const double _tileHeight = 56;
+  static const double _spacing = 8;
+  static const double _headerHeight = 40;
+  static const double _pageGap = 14;
+  static const double _topPadding = 4;
 
   /// จำนวนช่วงเวลาที่แสดงย้อนหลัง/ไปข้างหน้าจากช่วงปัจจุบัน
   static const Map<CalendarMode, int> _span = <CalendarMode, int>{
@@ -44,8 +59,12 @@ class _PeriodJumpSheetState extends State<_PeriodJumpSheet> {
 
   late final List<DateTime> _options = _buildOptions();
   late final int _currentIndex = _span[widget.mode]!;
+  late final List<_PeriodPage> _pages = _buildPages();
+
+  /// หน้าที่ช่วงปัจจุบันอยู่ — เปิดแผ่นมาแล้วเลื่อนไปให้เห็นหัวข้อของหน้านั้นเลย
+  late final int _currentPage = _pageIndexOf(_options[_currentIndex]);
   late final ScrollController _controller = ScrollController(
-    initialScrollOffset: _currentIndex > 2 ? (_currentIndex - 2) * _itemExtent : 0,
+    initialScrollOffset: _offsetOfPage(_currentPage),
   );
 
   List<DateTime> _buildOptions() {
@@ -64,14 +83,72 @@ class _PeriodJumpSheetState extends State<_PeriodJumpSheet> {
     });
   }
 
-  String _labelOf(DateTime value) {
+  /// จัดช่วงเวลาลงเป็นหน้า ๆ — สัปดาห์กองตามเดือน เดือนกองตามปี ปีกองตามทศวรรษ
+  List<_PeriodPage> _buildPages() {
+    final List<_PeriodPage> pages = <_PeriodPage>[];
+    String? currentTitle;
+    List<DateTime> bucket = <DateTime>[];
+    for (final DateTime value in _options) {
+      final String title = _pageTitleOf(value);
+      if (title != currentTitle) {
+        if (currentTitle != null) {
+          pages.add(_PeriodPage(title: currentTitle, values: bucket));
+        }
+        currentTitle = title;
+        bucket = <DateTime>[];
+      }
+      bucket.add(value);
+    }
+    if (currentTitle != null) {
+      pages.add(_PeriodPage(title: currentTitle, values: bucket));
+    }
+    return pages;
+  }
+
+  String _pageTitleOf(DateTime value) {
     switch (widget.mode) {
       case CalendarMode.week:
-        return Fmt.weekRange(value);
-      case CalendarMode.month:
         return Fmt.monthYear(value);
-      case CalendarMode.year:
+      case CalendarMode.month:
         return 'ปี ${Fmt.displayYear(value.year)}';
+      case CalendarMode.year:
+        final int start = value.year - value.year % 10;
+        return 'ปี ${Fmt.displayYear(start)} - ${Fmt.displayYear(start + 9)}';
+    }
+  }
+
+  int _pageIndexOf(DateTime value) {
+    final String title = _pageTitleOf(value);
+    final int index = _pages.indexWhere((_PeriodPage p) => p.title == title);
+    return index < 0 ? 0 : index;
+  }
+
+  /// ระยะเลื่อนจนถึงหัวข้อของหน้าที่ [pageIndex]
+  double _offsetOfPage(int pageIndex) {
+    double offset = _topPadding;
+    for (int i = 0; i < pageIndex; i++) {
+      offset += _pageHeight(_pages[i].values.length);
+    }
+    return offset;
+  }
+
+  double _pageHeight(int itemCount) {
+    final int rows = (itemCount + _columns - 1) ~/ _columns;
+    return _headerHeight + rows * _tileHeight + (rows - 1) * _spacing + _pageGap;
+  }
+
+  /// ป้ายในช่องตาราง — สั้นได้เพราะมีชื่อหน้ากำกับอยู่ด้านบนแล้ว
+  String _tileLabelOf(DateTime value) {
+    switch (widget.mode) {
+      case CalendarMode.week:
+        final DateTime end = value.add(const Duration(days: 6));
+        if (value.month == end.month) return '${value.day} - ${end.day}';
+        return '${value.day} ${Fmt.monthsShort[value.month - 1]} - '
+            '${end.day} ${Fmt.monthsShort[end.month - 1]}';
+      case CalendarMode.month:
+        return Fmt.monthsShort[value.month - 1];
+      case CalendarMode.year:
+        return '${Fmt.displayYear(value.year)}';
     }
   }
 
@@ -136,48 +213,132 @@ class _PeriodJumpSheetState extends State<_PeriodJumpSheet> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: ListView.builder(
-                controller: _controller,
-                itemExtent: _itemExtent,
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                itemCount: _options.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final DateTime value = _options[index];
-                  final bool selected = index == _currentIndex;
-                  final bool today = _containsToday(value);
-                  return ListTile(
-                    selected: selected,
-                    leading: Icon(
-                      selected
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      color: selected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: CustomScrollView(
+                  controller: _controller,
+                  slivers: <Widget>[
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: _topPadding),
                     ),
-                    title: Text(
-                      _labelOf(value),
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: selected || today
-                            ? FontWeight.w700
-                            : FontWeight.w400,
+                    for (final _PeriodPage page in _pages) ...<Widget>[
+                      SliverToBoxAdapter(
+                        child: _PageTitle(title: page.title),
                       ),
-                    ),
-                    trailing: today
-                        ? Text(
-                            'วันนี้',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          )
-                        : null,
-                    onTap: () => Navigator.pop(context, value),
-                  );
-                },
+                      SliverPadding(
+                        padding: const EdgeInsets.only(bottom: _pageGap),
+                        sliver: SliverGrid(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: _columns,
+                                mainAxisExtent: _tileHeight,
+                                crossAxisSpacing: _spacing,
+                                mainAxisSpacing: _spacing,
+                              ),
+                          delegate: SliverChildBuilderDelegate(
+                            (BuildContext context, int index) {
+                              final DateTime value = page.values[index];
+                              return _PeriodTile(
+                                label: _tileLabelOf(value),
+                                selected: value == _options[_currentIndex],
+                                today: _containsToday(value),
+                                onTap: () => Navigator.pop(context, value),
+                              );
+                            },
+                            childCount: page.values.length,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ชื่อกำกับด้านบนของแต่ละหน้าในตาราง
+class _PageTitle extends StatelessWidget {
+  const _PageTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return SizedBox(
+      height: _PeriodJumpSheetState._headerHeight,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// หนึ่งช่องในตาราง — ช่วงที่กำลังดูอยู่จะถูกไฮไลต์ ส่วนช่วงที่มีวันนี้จะขึ้นขอบ
+class _PeriodTile extends StatelessWidget {
+  const _PeriodTile({
+    required this.label,
+    required this.selected,
+    required this.today,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool today;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final Color background = selected
+        ? colors.primaryContainer
+        : colors.surfaceContainerLow;
+    final Color foreground = selected
+        ? colors.onPrimaryContainer
+        : colors.onSurface;
+    return Material(
+      color: background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: today && !selected
+            ? BorderSide(color: colors.primary, width: 1.5)
+            : BorderSide.none,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: foreground,
+                fontWeight: selected || today
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+              ),
+            ),
+          ),
         ),
       ),
     );
