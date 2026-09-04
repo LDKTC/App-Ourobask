@@ -223,8 +223,7 @@ class SettingsPage extends StatelessWidget {
                     final bool ok = await confirmDialog(
                       context,
                       title: 'ล้างข้อมูลทั้งหมด?',
-                      message:
-                          'งาน โฟลเดอร์ กิจวัตร ไอเดีย และการเตือนทั้งหมดจะถูกลบถาวร',
+                      message: 'งาน โฟลเดอร์ โน้ต กิจวัตร ไอเดีย และการเตือนทั้งหมดจะถูกลบถาวร',
                       confirmLabel: 'ล้างข้อมูล',
                       destructive: true,
                     );

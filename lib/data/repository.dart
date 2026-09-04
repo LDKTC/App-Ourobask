@@ -10,6 +10,7 @@ const List<String> kDataTables = <String>[
   'tasks',
   'routines',
   'ideas',
+  'notes',
   'projects',
 ];
 
@@ -75,6 +76,8 @@ class Repository {
       where: 'project_id = ?',
       whereArgs: <Object?>[id],
     );
+    // โน้ตอยู่ได้เฉพาะในโฟลเดอร์ จึงถูกลบไปพร้อมกับโฟลเดอร์เสมอ
+    await db.delete('notes', where: 'project_id = ?', whereArgs: <Object?>[id]);
     await db.delete('projects', where: 'id = ?', whereArgs: <Object?>[id]);
   }
 
@@ -156,6 +159,42 @@ class Repository {
   Future<void> deleteQuestEntry(int id) async {
     final Database db = await _db;
     await db.delete('quest_entries', where: 'id = ?', whereArgs: <Object?>[id]);
+  }
+
+  // ------------------------------------------------------------------- notes
+  Future<List<Note>> notes() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'notes',
+      orderBy: 'pinned DESC, updated_at DESC, id DESC',
+    );
+    return rows.map(Note.fromMap).toList();
+  }
+
+  Future<int> insertNote(Note note) async {
+    final Database db = await _db;
+    final Map<String, Object?> map = note.toMap()..remove('id');
+    final int id = await db.insert('notes', map);
+    note.id = id;
+    return id;
+  }
+
+  /// [touch] = false ใช้กับการเปลี่ยนที่ไม่ใช่การแก้เนื้อหา (เช่น ปักหมุด)
+  /// เพื่อไม่ให้เวลาแก้ไขล่าสุดขยับ
+  Future<void> updateNote(Note note, {bool touch = true}) async {
+    final Database db = await _db;
+    if (touch) note.updatedAt = DateTime.now();
+    await db.update(
+      'notes',
+      note.toMap(),
+      where: 'id = ?',
+      whereArgs: <Object?>[note.id],
+    );
+  }
+
+  Future<void> deleteNote(int id) async {
+    final Database db = await _db;
+    await db.delete('notes', where: 'id = ?', whereArgs: <Object?>[id]);
   }
 
   // --------------------------------------------------------------- reminders
@@ -319,6 +358,7 @@ class Repository {
     required List<Routine> routines,
     required List<Idea> ideas,
     List<QuestEntry> questEntries = const <QuestEntry>[],
+    List<Note> notes = const <Note>[],
   }) async {
     final Database db = await _db;
     await db.transaction((Transaction txn) async {
@@ -343,6 +383,9 @@ class Repository {
       for (final QuestEntry item in questEntries) {
         await txn.insert('quest_entries', item.toMap());
       }
+      for (final Note item in notes) {
+        await txn.insert('notes', item.toMap());
+      }
     });
   }
 
@@ -354,6 +397,7 @@ class Repository {
     required List<Routine> routines,
     required List<Idea> ideas,
     List<QuestEntry> questEntries = const <QuestEntry>[],
+    List<Note> notes = const <Note>[],
   }) async {
     final Map<int, int> projectIdMap = <int, int>{};
     final Map<int, int> taskIdMap = <int, int>{};
@@ -408,6 +452,14 @@ class Repository {
       entry.taskId = taskId;
       entry.routineId = entry.routineId == null ? null : routineIdMap[entry.routineId];
       await insertQuestEntry(entry);
+    }
+    for (final Note note in notes) {
+      // โน้ตที่หาโฟลเดอร์ปลายทางไม่เจอจะถูกข้าม เพราะอยู่นอกโฟลเดอร์ไม่ได้
+      final int? projectId = projectIdMap[note.projectId];
+      if (projectId == null) continue;
+      note.id = null;
+      note.projectId = projectId;
+      await insertNote(note);
     }
   }
 }

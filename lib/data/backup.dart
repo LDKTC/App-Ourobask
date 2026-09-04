@@ -18,6 +18,7 @@ class ImportResult {
     required this.routines,
     required this.ideas,
     this.questEntries = 0,
+    this.notes = 0,
   });
 
   final int projects;
@@ -26,10 +27,11 @@ class ImportResult {
   final int routines;
   final int ideas;
   final int questEntries;
+  final int notes;
 
   String get summary =>
       'โปรเจกต์ $projects • งาน $tasks • การเตือน $reminders • กิจวัตร $routines'
-      ' • ไอเดีย $ideas • บันทึกเงิน $questEntries';
+      ' • ไอเดีย $ideas • บันทึกเงิน $questEntries • โน้ต $notes';
 }
 
 /// ข้อมูลสำรองทั้งชุด (ใช้ทั้ง export และ import)
@@ -41,6 +43,7 @@ class BackupPayload {
     required this.routines,
     required this.ideas,
     this.questEntries = const <QuestEntry>[],
+    this.notes = const <Note>[],
   });
 
   final List<Project> projects;
@@ -49,6 +52,7 @@ class BackupPayload {
   final List<Routine> routines;
   final List<Idea> ideas;
   final List<QuestEntry> questEntries;
+  final List<Note> notes;
 
   ImportResult get counts => ImportResult(
     projects: projects.length,
@@ -57,6 +61,7 @@ class BackupPayload {
     routines: routines.length,
     ideas: ideas.length,
     questEntries: questEntries.length,
+    notes: notes.length,
   );
 }
 
@@ -66,7 +71,7 @@ class BackupService {
 
   final Repository _repo;
 
-  static const int formatVersion = 2;
+  static const int formatVersion = 3;
   static const String magic = 'ourobask-backup';
 
   Future<Map<String, Object?>> buildBackup() async {
@@ -76,6 +81,7 @@ class BackupService {
     final List<Routine> routines = await _repo.routines();
     final List<Idea> ideas = await _repo.ideas();
     final List<QuestEntry> questEntries = await _repo.questEntries();
+    final List<Note> notes = await _repo.notes();
     return <String, Object?>{
       'format': magic,
       'version': formatVersion,
@@ -86,6 +92,7 @@ class BackupService {
       'routines': routines.map((Routine e) => e.toMap()).toList(),
       'ideas': ideas.map((Idea e) => e.toMap()).toList(),
       'quest_entries': questEntries.map((QuestEntry e) => e.toMap()).toList(),
+      'notes': notes.map((Note e) => e.toMap()).toList(),
     };
   }
 
@@ -160,6 +167,7 @@ class BackupService {
       routines: rows('routines').map(Routine.fromMap).toList(),
       ideas: rows('ideas').map(Idea.fromMap).toList(),
       questEntries: rows('quest_entries').map(QuestEntry.fromMap).toList(),
+      notes: rows('notes').map(Note.fromMap).toList(),
     );
   }
 }

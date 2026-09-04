@@ -86,6 +86,7 @@ class AppState extends ChangeNotifier {
   List<Routine> _routines = <Routine>[];
   List<Idea> _ideas = <Idea>[];
   List<QuestEntry> _questEntries = <QuestEntry>[];
+  List<Note> _notes = <Note>[];
   Map<String, String> _settings = <String, String>{};
   bool _loading = true;
 
@@ -95,6 +96,9 @@ class AppState extends ChangeNotifier {
   List<Idea> get ideas => List<Idea>.unmodifiable(_ideas.where((Idea i) => !i.archived));
   List<Reminder> get reminders => List<Reminder>.unmodifiable(_reminders);
   List<QuestEntry> get questEntries => List<QuestEntry>.unmodifiable(_questEntries);
+
+  /// โน้ตทั้งหมด — เข้าถึงได้ผ่านโฟลเดอร์งานเท่านั้น ดู [notesOfProject]
+  List<Note> get notes => List<Note>.unmodifiable(_notes);
   bool get isLoading => _loading;
 
   ThemeMode get themeMode {
@@ -134,6 +138,7 @@ class AppState extends ChangeNotifier {
     _routines = await _repo.routines();
     _ideas = await _repo.ideas();
     _questEntries = await _repo.questEntries();
+    _notes = await _repo.notes();
     _loading = false;
     // งานที่ทำเสร็จเกินระยะเวลาที่เก็บไว้จะถูกล้างออกทุกครั้งที่เปิดแอป
     await _purgeExpiredCompleted(silent: true);
@@ -152,6 +157,7 @@ class AppState extends ChangeNotifier {
     _routines = await _repo.routines();
     _ideas = await _repo.ideas();
     _questEntries = await _repo.questEntries();
+    _notes = await _repo.notes();
     notifyListeners();
   }
 
@@ -561,6 +567,57 @@ class AppState extends ChangeNotifier {
     return task;
   }
 
+  // ------------------------------------------------------------------ notes
+  /// โน้ตของโฟลเดอร์งานหนึ่ง — ปักหมุดขึ้นก่อน แล้วเรียงจากที่แก้ไขล่าสุด
+  List<Note> notesOfProject(int? projectId) {
+    if (projectId == null) return <Note>[];
+    final List<Note> list = _notes.where((Note n) => n.projectId == projectId).toList()
+      ..sort((Note a, Note b) {
+        if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+    return list;
+  }
+
+  int noteCountOfProject(int? projectId) {
+    if (projectId == null) return 0;
+    return _notes.where((Note n) => n.projectId == projectId).length;
+  }
+
+  /// บันทึกโน้ต — โน้ตที่ไม่มีทั้งหัวข้อและเนื้อหาจะถูกทิ้ง (คืน false)
+  Future<bool> saveNote(Note note) async {
+    if (note.isEmpty) {
+      if (note.id != null) await deleteNote(note);
+      return false;
+    }
+    if (note.id == null) {
+      note.sortOrder = noteCountOfProject(note.projectId);
+      await _repo.insertNote(note);
+    } else {
+      await _repo.updateNote(note);
+    }
+    _notes = await _repo.notes();
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> setNotePinned(Note note, bool pinned) async {
+    if (note.id == null || note.pinned == pinned) return;
+    note.pinned = pinned;
+    // ปักหมุดไม่ใช่การแก้เนื้อหา จึงไม่ขยับเวลาแก้ไขล่าสุดและลำดับของโน้ต
+    await _repo.updateNote(note, touch: false);
+    _notes = await _repo.notes();
+    notifyListeners();
+  }
+
+  Future<void> deleteNote(Note note) async {
+    final int? id = note.id;
+    if (id == null) return;
+    await _repo.deleteNote(id);
+    _notes = await _repo.notes();
+    notifyListeners();
+  }
+
   // -------------------------------------------------------------- reminders
   List<Reminder> remindersOf(String ownerType, int? ownerId) {
     if (ownerId == null) return <Reminder>[];
@@ -808,6 +865,7 @@ class AppState extends ChangeNotifier {
         routines: payload.routines,
         ideas: payload.ideas,
         questEntries: payload.questEntries,
+        notes: payload.notes,
       );
     } else {
       await _repo.mergeAll(
@@ -817,6 +875,7 @@ class AppState extends ChangeNotifier {
         routines: payload.routines,
         ideas: payload.ideas,
         questEntries: payload.questEntries,
+        notes: payload.notes,
       );
     }
     await _reloadAll();

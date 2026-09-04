@@ -122,6 +122,11 @@ class _ProjectCard extends StatelessWidget {
     final int done = tasks.where((Task t) => t.done).length;
     final double progress = tasks.isEmpty ? 0 : done / tasks.length;
     final MoneySummary money = state.moneyOf(tasks);
+    final int noteCount = state.noteCountOfProject(project.id);
+    final String subtitle = <String>[
+      if (tasks.isEmpty) 'ยังไม่มีงาน' else 'เสร็จ $done จาก ${tasks.length} งาน',
+      if (noteCount > 0) '$noteCount โน้ต',
+    ].join(' • ');
 
     return Card(
       color: color.withValues(alpha: 0.10),
@@ -168,7 +173,9 @@ class _ProjectCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                tasks.isEmpty ? 'ยังไม่มีงาน' : 'เสร็จ $done จาก ${tasks.length} งาน',
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
